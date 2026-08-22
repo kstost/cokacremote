@@ -1,0 +1,33 @@
+services:
+  cokacremote:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cokacremote
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      MCP_HOST: ${MCP_HOST:-0.0.0.0}
+      MCP_PORT: ${MCP_PORT:-3000}
+      MCP_DEFAULT_CWD: ${MCP_DEFAULT_CWD:-/workspace}
+      MCP_OAUTH_STATE_FILE: ${MCP_OAUTH_STATE_FILE:-/data/oauth-state.json}
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
+    ports:
+      - "127.0.0.1:${MCP_PORT:-3000}:${MCP_PORT:-3000}"
+    volumes:
+      - ${WORKSPACE_PATH:-./workspace}:/workspace
+      - cokacremote-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:$${MCP_PORT:-3000}/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  cokacremote-data:
