@@ -17,6 +17,11 @@ coverage/
 .tmp/
 tmp/
 temp/
+/data/
+
+# Docker bind-mount workspace: retain the directory, ignore its contents.
+/workspace/*
+!/workspace/.gitkeep
 
 # Credentials and private keys
 *.pem

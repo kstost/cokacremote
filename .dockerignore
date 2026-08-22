@@ -1,0 +1,22 @@
+# Dependencies and generated output
+node_modules/
+dist/
+coverage/
+.vitest/
+*.tsbuildinfo
+
+# Source-control and local configuration
+.git/
+.env
+.env.*
+!.env.example
+workspace/
+data/
+npm-debug.log
+*.log
+
+# Local/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
