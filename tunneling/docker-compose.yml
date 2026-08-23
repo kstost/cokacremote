@@ -1,0 +1,44 @@
+services:
+  workmachine:
+    build:
+      context: .
+      args:
+        TIMEZONE: "${TZ:-UTC}"
+        COKACREMOTE_REF: "${COKACREMOTE_REF:-main}"
+    image: "${WORKMACHINE_IMAGE:-workmachine:local}"
+    container_name: workmachine
+    hostname: workmachine
+    restart: unless-stopped
+    environment:
+      TZ: "${TZ:-UTC}"
+      MCP_PUBLIC_URL: "${MCP_PUBLIC_URL:?Set MCP_PUBLIC_URL in .env}"
+      MCP_ALLOWED_HOSTS: "${MCP_ALLOWED_HOSTS:-}"
+      MCP_OAUTH_ENABLED: "${MCP_OAUTH_ENABLED:-true}"
+      MCP_OAUTH_APPROVAL_KEY: "${MCP_OAUTH_APPROVAL_KEY:-}"
+      MCP_AUTH_TOKEN: "${MCP_AUTH_TOKEN:-}"
+    volumes:
+      - type: bind
+        source: "${SHARED_PATH:?Set SHARED_PATH in .env}"
+        target: /shared
+      - type: volume
+        source: cokacremote-state
+        target: /var/lib/cokacremote
+    stop_grace_period: 30s
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: chatgpt-cloudflared
+    restart: unless-stopped
+    network_mode: "service:workmachine"
+    depends_on:
+      workmachine:
+        condition: service_healthy
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token
+      - "${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env}"
+
+volumes:
+  cokacremote-state:
