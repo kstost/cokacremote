@@ -1,0 +1,10 @@
+https://youtu.be/xJQ1pbQyMiw 영상의 03:21에서 입력하는 명령어 모음입니다.
+한줄씩 입력하면 됩니다.
+
+ls -al ~/Documents/cokacremote
+git clone https://github.com/kstost/cokacremote ~/Documents/cokacremote
+cd ~/Documents/cokacremote/tunneling
+cp .env.example .env
+realpath .env
+docker compose -p workmachine up -d --build
+docker compose -p workmachine exec workmachine cat /var/lib/cokacremote/oauth-approval-key
