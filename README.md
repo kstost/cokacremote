@@ -147,6 +147,18 @@ The Quick Start above is enough to run a normal local instance. If you are chang
 MCP_AUTH_TOKEN=development-token npm run dev
 ```
 
+## Docker Compose
+
+The Compose service bind-mounts the project-local `./.ssh` directory at `/home/node/.ssh`. SSH keys, config, and `known_hosts` created inside the container therefore survive container restarts and recreation without exposing the host user's SSH directory. Set `SSH_PATH` in `.env` to use another directory on the same disk.
+
+Then build or recreate the service normally:
+
+```bash
+docker compose up -d --build
+```
+
+Create the host directory with mode `0700` before starting the service. Because this is a bind mount, `docker compose down --volumes` does not remove its SSH credentials. Back up or delete the configured `SSH_PATH` separately when needed.
+
 ## Authentication
 
 When `MCP_AUTH_TOKEN` is set, every MCP request requires the following header:
