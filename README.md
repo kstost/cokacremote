@@ -47,14 +47,14 @@ The server starts on port `3000` by default.
 - MCP endpoint: `http://127.0.0.1:3000/mcp`
 - Health check: `http://127.0.0.1:3000/health`
 
-For a real remote ChatGPT connection, you will normally also need:
+For a remote MCP connection over the public internet, you will normally also need:
 
 1. A public HTTPS domain such as `https://mcp.example.com`
 2. Nginx or another reverse proxy in front of the Node.js service
-3. OAuth enabled for ChatGPT, or a Bearer token for clients that support one
-4. The MCP URL added in ChatGPT, for example `https://mcp.example.com/mcp`
+3. An authentication method supported by the client, such as OAuth 2.1 or a Bearer token
+4. The MCP URL added to the client, for example `https://mcp.example.com/mcp`
 
-The full deployment and ChatGPT connection steps are explained later in this README.
+The full deployment steps and a ChatGPT-specific connection example are explained later in this README.
 
 ## What can it do?
 
@@ -73,10 +73,10 @@ Internally, these actions are provided through 20 MCP tools for shell execution,
 
 With `cokacremote`:
 
-1. ChatGPT sends an MCP request over HTTPS.
+1. An MCP client sends an MCP request over HTTPS.
 2. `cokacremote` checks authentication.
 3. It runs the requested tool directly on the host server.
-4. The command output or file-operation result is returned to ChatGPT.
+4. The command output or file-operation result is returned to the client.
 
 The MCP transport is stateless, but long-running command sessions are kept in memory so they can be polled or controlled across multiple requests.
 
@@ -85,7 +85,7 @@ The MCP transport is stateless, but long-running command sessions are kept in me
 - Shell commands, complete scripts, builds, tests, package installation, Git, and service management
 - Output polling, stdin delivery, and termination control for long-running processes
 - Read, write, edit, transfer, and delete host files, including absolute paths
-- Built-in static Bearer authentication and OAuth 2.1/DCR/PKCE for ChatGPT
+- Built-in static Bearer authentication and OAuth 2.1/DCR/PKCE for compatible MCP clients
 - Stateless JSON transport per request, per-process output retention, and response size limits
 - systemd and Nginx deployment examples for Linux VPS/EC2 environments
 
@@ -110,6 +110,20 @@ The MCP transport is stateless, but long-running command sessions are kept in me
 Relative paths are resolved from `MCP_DEFAULT_CWD`, while absolute paths and `~/...` paths are also allowed. Uploads and downloads use base64 chunk transfer with `nextOffset`.
 
 The server provides 20 tools in total. `remove_path` permanently deletes targets without using a trash folder, and `apply_patch` uses the host's `git apply --unsafe-paths`.
+
+### Tool safety and authentication metadata
+
+Every tool explicitly publishes all four MCP safety hints. The values describe the strongest behavior available through that tool, including optional arguments such as `write_file.mode="append"` and `copy_path.force=true`.
+
+| Behavior | Tools | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
+|---|---|---:|---:|---:|---:|
+| Read-only, closed world | `list_directory`, `stat_path`, `read_file`, `download_file`, `hash_file`, `read_process`, `list_processes` | `true` | `false` | `true` | `false` |
+| Additive and idempotent | `make_directory` | `false` | `false` | `true` | `false` |
+| Destructive and idempotent | `upload_file`, `copy_path`, `move_path`, `remove_path`, `chmod_path` | `false` | `true` | `true` | `false` |
+| Destructive and non-idempotent, closed world | `write_file`, `replace_in_file`, `apply_patch`, `terminate_process` | `false` | `true` | `false` | `false` |
+| Destructive and non-idempotent, open world | `exec_command`, `run_script`, `write_stdin` | `false` | `true` | `false` | `true` |
+
+These annotations are advisory client metadata, not access control. They do not replace authentication, which is enforced by the built-in HTTP layer or an upstream gateway when configured. When built-in OAuth is enabled, every tool advertises the `oauth2` security scheme with the `mcp:tools` scope through `_meta.securitySchemes`. Static-Bearer-only and built-in-auth-disabled (`MCP_ALLOW_NO_AUTH`) deployments intentionally omit this OpenAI extension: a pre-shared Bearer token is neither `noauth` nor `oauth2`, while disabling built-in authentication may represent a deliberately anonymous endpoint, upstream authentication, or private-network access. The process cannot infer that external policy honestly, so authentication, if any, remains connection- or deployment-level.
 
 ### File reading and transfer rules
 
@@ -144,7 +158,9 @@ The server provides 20 tools in total. `remove_path` permanently deletes targets
 The Quick Start above is enough to run a normal local instance. If you are changing the source code itself, development mode automatically watches the TypeScript entry point:
 
 ```bash
-MCP_AUTH_TOKEN=development-token npm run dev
+export MCP_HOST=127.0.0.1
+export MCP_AUTH_TOKEN="$(openssl rand -hex 32)"
+npm run dev
 ```
 
 ## Authentication
@@ -155,7 +171,7 @@ When `MCP_AUTH_TOKEN` is set, every MCP request requires the following header:
 Authorization: Bearer <MCP_AUTH_TOKEN>
 ```
 
-You can also enable the built-in OAuth 2.1 Authorization Server for ChatGPT connections. The following values are environment-file examples, not shell commands:
+You can also enable the built-in OAuth 2.1 Authorization Server for compatible OAuth-capable MCP clients, including ChatGPT. The following values are environment-file examples, not shell commands:
 
 ```dotenv
 MCP_OAUTH_ENABLED=true
@@ -175,7 +191,7 @@ When enabled, the server provides:
 - `resource` audience validation
 - Access tokens, replay-detecting refresh token rotation, and grant-level token revocation
 
-OAuth uses a single `mcp:tools` scope. Enter the `MCP_OAUTH_APPROVAL_KEY` value on the approval page shown when authorizing a ChatGPT connection. For OAuth-only deployments, it is recommended to leave `MCP_AUTH_TOKEN` empty so there is no permanent static Bearer bypass path. For backward compatibility, `MCP_AUTH_TOKEN` is used as the approval key when no dedicated approval key is configured, but keeping the two values separate is safer. Treat both values like root credentials. Registered clients, client secrets, and token hashes are stored in `MCP_OAUTH_STATE_FILE` with mode `600`.
+OAuth uses a single `mcp:tools` scope. Enter the `MCP_OAUTH_APPROVAL_KEY` value on the approval page shown when authorizing an OAuth client connection. For OAuth-only deployments, it is recommended to leave `MCP_AUTH_TOKEN` empty so there is no permanent static Bearer bypass path. For backward compatibility, `MCP_AUTH_TOKEN` is used as the approval key when no dedicated approval key is configured, but keeping the two values separate is safer. Treat both values like root credentials. Registered clients, client secrets, and token hashes are stored in `MCP_OAUTH_STATE_FILE` with mode `600`.
 
 OAuth-related HTTP routes:
 
@@ -299,7 +315,7 @@ Example healthy response:
 
 - `activeMcpSessions` is always `0` in stateless mode. This does not mean the connection is broken.
 - `activeMcpRequests` is the number of MCP HTTP requests being processed at the time of the health request.
-- `managedProcesses` includes both currently running processes and recently completed processes retained temporarily for output retrieval. Check the `status` field from `list_processes` to determine whether a process is still running. Completed records are removed after `MCP_PROCESS_RETENTION_MS`.
+- `managedProcesses` includes both currently running processes and recently completed processes retained temporarily for output retrieval. Check the `running` field from `list_processes` to determine whether a process is still running. Completed records are removed after `MCP_PROCESS_RETENTION_MS`.
 - Every MCP response includes an `X-Request-Id` for tracing. Service log entries with `event="mcp_request"` record the RPC method, tool name, HTTP status, outcome, and duration without logging authentication tokens or tool arguments.
 
 To inspect recent MCP request logs only:
@@ -356,7 +372,7 @@ This verification executes real commands on the target server and creates, modif
 | `MCP_TRUST_PROXY_HOPS` | `0` | Number of trusted reverse-proxy hops; keep `0` when directly exposed |
 | `MCP_AUTH_TOKEN` | none | Optional static Bearer token |
 | `MCP_ALLOW_NO_AUTH` | `false` | Allow startup without authentication |
-| `MCP_OAUTH_ENABLED` | `false` | Enable built-in OAuth 2.1/DCR for ChatGPT |
+| `MCP_OAUTH_ENABLED` | `false` | Enable the built-in OAuth 2.1/DCR authorization server |
 | `MCP_OAUTH_APPROVAL_KEY` | `MCP_AUTH_TOKEN` | Dedicated key for the OAuth connection approval page |
 | `MCP_OAUTH_ISSUER` | `MCP_PUBLIC_URL` | OAuth issuer URL |
 | `MCP_OAUTH_RESOURCE` | `<MCP_PUBLIC_URL><MCP_ENDPOINT>` | MCP resource audience |

@@ -33,7 +33,6 @@ export function createMcpServer(config: AppConfig, services: McpServices): McpSe
     {
       name: "cokacremote",
       version: "0.1.0",
-      ...(config.publicUrl ? { websiteUrl: config.publicUrl } : {}),
     },
     {
       instructions:

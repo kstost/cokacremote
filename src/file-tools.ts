@@ -4,20 +4,7 @@ import * as z from "zod/v4";
 import type { AppConfig } from "./config.js";
 import { FileService } from "./file-service.js";
 import { runTool } from "./tool-result.js";
-
-const readAnnotations = {
-  readOnlyHint: true,
-  destructiveHint: false,
-  idempotentHint: true,
-  openWorldHint: false,
-};
-
-const writeAnnotations = {
-  readOnlyHint: false,
-  destructiveHint: true,
-  idempotentHint: false,
-  openWorldHint: false,
-};
+import { TOOL_ANNOTATIONS, toolAuthMetadata } from "./tool-metadata.js";
 
 const cwdSchema = z
   .string()
@@ -47,6 +34,8 @@ export function registerFileTools(
   config: AppConfig,
   files: FileService,
 ): void {
+  const authMetadata = toolAuthMetadata(config);
+
   server.registerTool(
     "list_directory",
     {
@@ -56,13 +45,37 @@ export function registerFileTools(
       inputSchema: {
         path: pathSchema,
         cwd: cwdSchema,
-        recursive: z.boolean().default(false),
-        maxDepth: z.number().int().min(0).max(100).default(8),
-        maxEntries: z.number().int().min(1).max(50_000).default(1000),
-        includeHidden: z.boolean().default(true),
-        includeMetadata: z.boolean().default(false),
+        recursive: z
+          .boolean()
+          .default(false)
+          .describe("Descend into child directories without following directory symlinks."),
+        maxDepth: z
+          .number()
+          .int()
+          .min(0)
+          .max(100)
+          .default(8)
+          .describe(
+            "Maximum directory depth below the requested root when recursive=true. Zero lists only direct children.",
+          ),
+        maxEntries: z
+          .number()
+          .int()
+          .min(1)
+          .max(50_000)
+          .default(1000)
+          .describe("Maximum total entries returned; truncated=true indicates the limit was reached."),
+        includeHidden: z
+          .boolean()
+          .default(true)
+          .describe("Include entries whose names begin with a dot."),
+        includeMetadata: z
+          .boolean()
+          .default(false)
+          .describe("Include size, Unix mode, and modification time for each entry."),
       },
-      annotations: readAnnotations,
+      annotations: TOOL_ANNOTATIONS.readOnlyClosed,
+      _meta: authMetadata,
     },
     async ({ path, cwd, recursive, maxDepth, maxEntries, includeHidden, includeMetadata }) =>
       runTool(() =>
@@ -82,7 +95,8 @@ export function registerFileTools(
       title: "Inspect path",
       description: "Return metadata for any file, directory, or symbolic link.",
       inputSchema: { path: pathSchema, cwd: cwdSchema },
-      annotations: readAnnotations,
+      annotations: TOOL_ANNOTATIONS.readOnlyClosed,
+      _meta: authMetadata,
     },
     async ({ path, cwd }) => runTool(() => files.getInfo(path, cwd)),
   );
@@ -96,16 +110,28 @@ export function registerFileTools(
       inputSchema: {
         path: pathSchema,
         cwd: cwdSchema,
-        offset: z.number().int().min(0).default(0),
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .default(0)
+          .describe("Starting byte offset. A value past end of file is clamped to end of file."),
         maxBytes: z
           .number()
           .int()
           .min(1)
           .max(config.maxFileChunkBytes)
-          .default(Math.min(256 * 1024, config.maxFileChunkBytes)),
-        encoding: z.enum(["utf8", "base64"]).default("utf8"),
+          .default(Math.min(256 * 1024, config.maxFileChunkBytes))
+          .describe(
+            "Maximum raw bytes requested. UTF-8 mode may adjust the returned size at a character boundary.",
+          ),
+        encoding: z
+          .enum(["utf8", "base64"])
+          .default("utf8")
+          .describe("Return valid text as UTF-8 or arbitrary bytes as base64."),
       },
-      annotations: readAnnotations,
+      annotations: TOOL_ANNOTATIONS.readOnlyClosed,
+      _meta: authMetadata,
     },
     async ({ path, cwd, offset, maxBytes, encoding }) =>
       runTool(() => files.readFileChunk(path, cwd, offset, maxBytes, encoding)),
@@ -120,13 +146,27 @@ export function registerFileTools(
       inputSchema: {
         path: pathSchema,
         cwd: cwdSchema,
-        content: z.string(),
-        encoding: z.enum(["utf8", "base64"]).default("utf8"),
-        mode: z.enum(["overwrite", "append"]).default("overwrite"),
-        createParents: z.boolean().default(true),
-        fileMode: fileModeSchema,
+        content: z
+          .string()
+          .describe("File content encoded according to encoding."),
+        encoding: z
+          .enum(["utf8", "base64"])
+          .default("utf8")
+          .describe("Interpret content as UTF-8 text or strictly validated base64."),
+        mode: z
+          .enum(["overwrite", "append"])
+          .default("overwrite")
+          .describe("Overwrite and truncate the file, or append content to its current end."),
+        createParents: z
+          .boolean()
+          .default(true)
+          .describe("Create missing parent directories before writing."),
+        fileMode: fileModeSchema.describe(
+          "Unix mode as an octal string, for example 0644. When provided, it is applied to both new and existing files.",
+        ),
       },
-      annotations: writeAnnotations,
+      annotations: TOOL_ANNOTATIONS.destructiveNonIdempotentClosed,
+      _meta: authMetadata,
     },
     async ({ path, cwd, content, encoding, mode, createParents, fileMode }) =>
       runTool(() =>
@@ -151,12 +191,26 @@ export function registerFileTools(
       inputSchema: {
         path: pathSchema,
         cwd: cwdSchema,
-        oldText: z.string().min(1),
-        newText: z.string(),
-        replaceAll: z.boolean().default(false),
-        expectedOccurrences: z.number().int().min(0).optional(),
+        oldText: z
+          .string()
+          .min(1)
+          .describe("Exact non-empty UTF-8 text to find."),
+        newText: z.string().describe("Replacement UTF-8 text."),
+        replaceAll: z
+          .boolean()
+          .default(false)
+          .describe("Replace every occurrence instead of only the first occurrence."),
+        expectedOccurrences: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe(
+            "Required total oldText occurrence count before editing. When omitted, the default is one for a single replacement and the observed count for replaceAll=true.",
+          ),
       },
-      annotations: writeAnnotations,
+      annotations: TOOL_ANNOTATIONS.destructiveNonIdempotentClosed,
+      _meta: authMetadata,
     },
     async ({ path, cwd, oldText, newText, replaceAll, expectedOccurrences }) =>
       runTool(() =>
@@ -180,11 +234,23 @@ export function registerFileTools(
       inputSchema: {
         patch: z.string().min(1).describe("Standard unified diff text."),
         cwd: cwdSchema,
-        checkOnly: z.boolean().default(false),
-        reverse: z.boolean().default(false),
-        threeWay: z.boolean().default(false),
+        checkOnly: z
+          .boolean()
+          .default(false)
+          .describe("Validate the patch with git apply --check without applying it."),
+        reverse: z
+          .boolean()
+          .default(false)
+          .describe("Reverse the patch before checking or applying it."),
+        threeWay: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Pass --3way to git apply. This requires applicable Git index data and may leave conflict markers when application conflicts.",
+          ),
       },
-      annotations: writeAnnotations,
+      annotations: TOOL_ANNOTATIONS.destructiveNonIdempotentClosed,
+      _meta: authMetadata,
     },
     async ({ patch, cwd, checkOnly, reverse, threeWay }) =>
       runTool(() => files.applyPatch(patch, cwd, { checkOnly, reverse, threeWay })),
@@ -199,12 +265,28 @@ export function registerFileTools(
       inputSchema: {
         path: pathSchema,
         cwd: cwdSchema,
-        dataBase64: z.string(),
-        offset: z.number().int().min(0).default(0),
-        truncate: z.boolean().default(false),
-        createParents: z.boolean().default(true),
+        dataBase64: z
+          .string()
+          .describe("Strictly validated base64 data for this chunk."),
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .default(0)
+          .describe(
+            "Exact byte offset at which to write the chunk. Writing past end of file may create a sparse zero-filled gap.",
+          ),
+        truncate: z
+          .boolean()
+          .default(false)
+          .describe("Truncate the file to zero bytes before writing this chunk."),
+        createParents: z
+          .boolean()
+          .default(true)
+          .describe("Create missing parent directories before opening the file."),
       },
-      annotations: writeAnnotations,
+      annotations: TOOL_ANNOTATIONS.destructiveIdempotentClosed,
+      _meta: authMetadata,
     },
     async ({ path, cwd, dataBase64, offset, truncate, createParents }) =>
       runTool(() =>
@@ -221,15 +303,22 @@ export function registerFileTools(
       inputSchema: {
         path: pathSchema,
         cwd: cwdSchema,
-        offset: z.number().int().min(0).default(0),
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .default(0)
+          .describe("Starting byte offset. A value past end of file is clamped to end of file."),
         maxBytes: z
           .number()
           .int()
           .min(1)
           .max(config.maxFileChunkBytes)
-          .default(config.maxFileChunkBytes),
+          .default(config.maxFileChunkBytes)
+          .describe("Maximum raw file bytes encoded into this base64 chunk."),
       },
-      annotations: readAnnotations,
+      annotations: TOOL_ANNOTATIONS.readOnlyClosed,
+      _meta: authMetadata,
     },
     async ({ path, cwd, offset, maxBytes }) =>
       runTool(() => files.downloadChunk(path, cwd, offset, maxBytes)),
@@ -243,10 +332,18 @@ export function registerFileTools(
       inputSchema: {
         path: pathSchema,
         cwd: cwdSchema,
-        recursive: z.boolean().default(true),
-        mode: fileModeSchema,
+        recursive: z
+          .boolean()
+          .default(true)
+          .describe(
+            "When true, create missing parent directories and succeed when the target directory already exists.",
+          ),
+        mode: fileModeSchema.describe(
+          "Creation mode as an octal string, for example 0755. Existing directories are not chmodded.",
+        ),
       },
-      annotations: writeAnnotations,
+      annotations: TOOL_ANNOTATIONS.additiveIdempotentClosed,
+      _meta: authMetadata,
     },
     async ({ path, cwd, recursive, mode }) =>
       runTool(() => files.makeDirectory(path, cwd, recursive, parseMode(mode))),
@@ -261,10 +358,19 @@ export function registerFileTools(
         sourcePath: pathSchema,
         destinationPath: pathSchema,
         cwd: cwdSchema,
-        recursive: z.boolean().default(true),
-        force: z.boolean().default(true),
+        recursive: z
+          .boolean()
+          .default(true)
+          .describe("Allow directory trees to be copied. A directory source requires true."),
+        force: z
+          .boolean()
+          .default(true)
+          .describe(
+            "Allow existing destination entries to be overwritten or merged. When false, fail if the destination path already exists.",
+          ),
       },
-      annotations: writeAnnotations,
+      annotations: TOOL_ANNOTATIONS.destructiveIdempotentClosed,
+      _meta: authMetadata,
     },
     async ({ sourcePath, destinationPath, cwd, recursive, force }) =>
       runTool(() => files.copyPath(sourcePath, destinationPath, cwd, recursive, force)),
@@ -279,9 +385,13 @@ export function registerFileTools(
         sourcePath: pathSchema,
         destinationPath: pathSchema,
         cwd: cwdSchema,
-        overwrite: z.boolean().default(false),
+        overwrite: z
+          .boolean()
+          .default(false)
+          .describe("Replace an existing destination path. When false, an existing destination is an error."),
       },
-      annotations: writeAnnotations,
+      annotations: TOOL_ANNOTATIONS.destructiveIdempotentClosed,
+      _meta: authMetadata,
     },
     async ({ sourcePath, destinationPath, cwd, overwrite }) =>
       runTool(() => files.movePath(sourcePath, destinationPath, cwd, overwrite)),
@@ -296,10 +406,17 @@ export function registerFileTools(
       inputSchema: {
         path: pathSchema,
         cwd: cwdSchema,
-        recursive: z.boolean().default(false),
-        force: z.boolean().default(false),
+        recursive: z
+          .boolean()
+          .default(false)
+          .describe("Recursively remove a directory and all of its contents."),
+        force: z
+          .boolean()
+          .default(false)
+          .describe("Ignore a missing target. This does not suppress other filesystem errors."),
       },
-      annotations: writeAnnotations,
+      annotations: TOOL_ANNOTATIONS.destructiveIdempotentClosed,
+      _meta: authMetadata,
     },
     async ({ path, cwd, recursive, force }) =>
       runTool(() => files.removePath(path, cwd, recursive, force)),
@@ -313,9 +430,13 @@ export function registerFileTools(
       inputSchema: {
         path: pathSchema,
         cwd: cwdSchema,
-        mode: z.string().regex(/^(?:0o)?[0-7]{3,4}$/),
+        mode: z
+          .string()
+          .regex(/^(?:0o)?[0-7]{3,4}$/)
+          .describe("Unix mode as a three- or four-digit octal string, optionally prefixed with 0o."),
       },
-      annotations: writeAnnotations,
+      annotations: TOOL_ANNOTATIONS.destructiveIdempotentClosed,
+      _meta: authMetadata,
     },
     async ({ path, cwd, mode }) =>
       runTool(() => files.changeMode(path, cwd, parseMode(mode) ?? 0)),
@@ -329,9 +450,13 @@ export function registerFileTools(
       inputSchema: {
         path: pathSchema,
         cwd: cwdSchema,
-        algorithm: z.enum(["sha256", "sha512", "md5"]).default("sha256"),
+        algorithm: z
+          .enum(["sha256", "sha512", "md5"])
+          .default("sha256")
+          .describe("Digest algorithm used to hash the file bytes."),
       },
-      annotations: readAnnotations,
+      annotations: TOOL_ANNOTATIONS.readOnlyClosed,
+      _meta: authMetadata,
     },
     async ({ path, cwd, algorithm }) =>
       runTool(() => files.hashFile(path, cwd, algorithm)),

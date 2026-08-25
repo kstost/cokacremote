@@ -5,6 +5,7 @@ import { isAscii } from "node:buffer";
 import { errorMessage } from "./errors.js";
 
 const OUTPUT_CHUNK_BYTES = 16 * 1024;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 export type ProcessOutputStream = "stdout" | "stderr";
 
@@ -34,6 +35,7 @@ interface ManagedProcess {
   waiters: Set<() => void>;
   exitWaiters: Set<() => void>;
   timeoutHandle: NodeJS.Timeout | undefined;
+  retentionHandle: NodeJS.Timeout | undefined;
   cleanup: (() => Promise<void>) | undefined;
 }
 
@@ -216,6 +218,7 @@ export class ProcessManager {
       waiters: new Set(),
       exitWaiters: new Set(),
       timeoutHandle: undefined,
+      retentionHandle: undefined,
       cleanup: request.cleanup,
     };
     this.#processes.set(sessionId, managed);
@@ -418,7 +421,6 @@ export class ProcessManager {
     endedAt: string | undefined;
     exitCode: number | null | undefined;
   }> {
-    this.prune();
     return [...this.#processes.values()].map((managed) => ({
       sessionId: managed.sessionId,
       pid: managed.child.pid,
@@ -436,9 +438,9 @@ export class ProcessManager {
 
   prune(): void {
     const cutoff = Date.now() - this.#options.processRetentionMs;
-    for (const [sessionId, managed] of this.#processes) {
+    for (const managed of this.#processes.values()) {
       if (managed.endedAt !== undefined && managed.endedAt < cutoff) {
-        this.#processes.delete(sessionId);
+        this.#forget(managed);
       }
     }
   }
@@ -471,7 +473,7 @@ export class ProcessManager {
     ) {
       const managed = completed.shift();
       if (managed) {
-        this.#processes.delete(managed.sessionId);
+        this.#forget(managed);
       }
     }
     if (this.#processes.size >= this.#options.maxProcesses) {
@@ -573,6 +575,42 @@ export class ProcessManager {
       void managed.cleanup().catch((error) => {
         managed.error ??= `Cleanup failed: ${errorMessage(error)}`;
       });
+    }
+    this.#scheduleRetention(managed);
+  }
+
+  #scheduleRetention(managed: ManagedProcess): void {
+    const expiresAt = (managed.endedAt ?? Date.now()) + this.#options.processRetentionMs;
+    const expireOrReschedule = () => {
+      managed.retentionHandle = undefined;
+      if (this.#processes.get(managed.sessionId) !== managed) {
+        return;
+      }
+      const remainingMs = expiresAt - Date.now();
+      if (remainingMs <= 0) {
+        this.#processes.delete(managed.sessionId);
+        return;
+      }
+      managed.retentionHandle = setTimeout(
+        expireOrReschedule,
+        Math.min(remainingMs, MAX_TIMER_DELAY_MS),
+      );
+      managed.retentionHandle.unref();
+    };
+    managed.retentionHandle = setTimeout(
+      expireOrReschedule,
+      Math.min(this.#options.processRetentionMs, MAX_TIMER_DELAY_MS),
+    );
+    managed.retentionHandle.unref();
+  }
+
+  #forget(managed: ManagedProcess): void {
+    if (managed.retentionHandle) {
+      clearTimeout(managed.retentionHandle);
+      managed.retentionHandle = undefined;
+    }
+    if (this.#processes.get(managed.sessionId) === managed) {
+      this.#processes.delete(managed.sessionId);
     }
   }
 

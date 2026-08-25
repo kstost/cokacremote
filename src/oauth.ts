@@ -24,8 +24,9 @@ import type { Request, Response } from "express";
 
 import { tokensEqual } from "./auth.js";
 import type { AppConfig } from "./config.js";
+import { OAUTH_SCOPES } from "./tool-metadata.js";
 
-export const OAUTH_SCOPES = ["mcp:tools"] as const;
+export { OAUTH_SCOPES };
 
 interface StoredToken {
   type: "access" | "refresh" | "used_refresh";

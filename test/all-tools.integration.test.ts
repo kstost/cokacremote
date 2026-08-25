@@ -38,6 +38,29 @@ const ALL_TOOLS = [
 type ToolName = (typeof ALL_TOOLS)[number];
 type ToolResult = Awaited<ReturnType<Client["callTool"]>>;
 
+const EXPECTED_ANNOTATIONS = {
+  apply_patch: [false, true, false, false],
+  chmod_path: [false, true, true, false],
+  copy_path: [false, true, true, false],
+  download_file: [true, false, true, false],
+  exec_command: [false, true, false, true],
+  hash_file: [true, false, true, false],
+  list_directory: [true, false, true, false],
+  list_processes: [true, false, true, false],
+  make_directory: [false, false, true, false],
+  move_path: [false, true, true, false],
+  read_file: [true, false, true, false],
+  read_process: [true, false, true, false],
+  remove_path: [false, true, true, false],
+  replace_in_file: [false, true, false, false],
+  run_script: [false, true, false, true],
+  stat_path: [true, false, true, false],
+  terminate_process: [false, true, false, false],
+  upload_file: [false, true, true, false],
+  write_file: [false, true, false, false],
+  write_stdin: [false, true, false, true],
+} as const satisfies Record<ToolName, readonly [boolean, boolean, boolean, boolean]>;
+
 function structured(result: ToolResult): Record<string, unknown> {
   return (result.structuredContent ?? {}) as Record<string, unknown>;
 }
@@ -159,7 +182,14 @@ describe.sequential("all registered MCP tools", () => {
     expect(listed.tools.map((tool) => tool.name).sort()).toEqual([...ALL_TOOLS]);
     for (const tool of listed.tools) {
       expect(tool.inputSchema.type).toBe("object");
-      expect(tool.annotations).toBeDefined();
+      const [readOnlyHint, destructiveHint, idempotentHint, openWorldHint] =
+        EXPECTED_ANNOTATIONS[tool.name as ToolName];
+      expect(tool.annotations, `${tool.name} annotations`).toEqual({
+        readOnlyHint,
+        destructiveHint,
+        idempotentHint,
+        openWorldHint,
+      });
     }
   });
 
@@ -754,6 +784,16 @@ describe.sequential("all registered MCP tools", () => {
       cwd: testRoot,
       overwrite: true,
     })).toMatchObject({ moved: true });
+    expect(await callOk("read_file", {
+      path: "transfer/move-destination.txt",
+      cwd: testRoot,
+    })).toMatchObject({ content: "move-source" });
+    expect(await callError("move_path", {
+      sourcePath: "transfer/move-source.txt",
+      destinationPath: "transfer/move-destination.txt",
+      cwd: testRoot,
+      overwrite: true,
+    })).toMatch(/ENOENT|no such file/i);
     expect(await callOk("read_file", {
       path: "transfer/move-destination.txt",
       cwd: testRoot,

@@ -132,4 +132,28 @@ describe("ProcessManager", () => {
     expect(first.output + second.output).toBe(expected);
     expect(first.output + second.output).not.toContain("�");
   });
+
+  it("lists processes without pruning and expires completed sessions independently", async () => {
+    manager = new ProcessManager({
+      maxRetainedOutputBytes: 1024 * 1024,
+      processRetentionMs: 500,
+      maxProcesses: 16,
+      defaultMaxOutputBytes: 1024 * 1024,
+    });
+    const sessionId = manager.start({
+      executable: "/bin/bash",
+      args: ["-c", "true"],
+      commandForDisplay: "true",
+      cwd: process.cwd(),
+    });
+
+    await manager.waitForExit(sessionId, 2000);
+    expect(manager.list()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ sessionId, running: false })]),
+    );
+    await expect(manager.read(sessionId)).resolves.toMatchObject({ running: false });
+
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await expect(manager.read(sessionId)).rejects.toThrow("Unknown process session");
+  });
 });
