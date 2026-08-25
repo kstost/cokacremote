@@ -149,6 +149,8 @@ MCP_AUTH_TOKEN="$(openssl rand -hex 32)" npm run dev
 
 ## Docker Compose
 
+For complete installation, security, persistent SSH, OAuth, update, and troubleshooting instructions, see the [Docker Compose Installation and Operations Guide](docs/docker-compose-guide.md). A [Korean version](docs/docker-compose-guide.ko.md) is also available. For a shorter macOS Docker Desktop walkthrough, see [DOCKER.md](DOCKER.md).
+
 The Compose service bind-mounts the project-local `./.ssh` directory at `/home/node/.ssh`. SSH keys, config, and `known_hosts` created inside the container therefore survive container restarts and recreation without exposing the host user's SSH directory. Set `SSH_PATH` in `.env` to use another directory on the same disk.
 
 Then build or recreate the service normally:
