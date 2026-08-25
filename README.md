@@ -144,7 +144,7 @@ The server provides 20 tools in total. `remove_path` permanently deletes targets
 The Quick Start above is enough to run a normal local instance. If you are changing the source code itself, development mode automatically watches the TypeScript entry point:
 
 ```bash
-MCP_AUTH_TOKEN=development-token npm run dev
+MCP_AUTH_TOKEN="$(openssl rand -hex 32)" npm run dev
 ```
 
 ## Docker Compose
@@ -188,6 +188,8 @@ When enabled, the server provides:
 - Access tokens, replay-detecting refresh token rotation, and grant-level token revocation
 
 OAuth uses a single `mcp:tools` scope. Enter the `MCP_OAUTH_APPROVAL_KEY` value on the approval page shown when authorizing a ChatGPT connection. For OAuth-only deployments, it is recommended to leave `MCP_AUTH_TOKEN` empty so there is no permanent static Bearer bypass path. For backward compatibility, `MCP_AUTH_TOKEN` is used as the approval key when no dedicated approval key is configured, but keeping the two values separate is safer. Treat both values like root credentials. Registered clients, client secrets, and token hashes are stored in `MCP_OAUTH_STATE_FILE` with mode `600`.
+
+Both authentication secrets must contain at least 32 characters, and known example placeholder values are rejected at startup. Generate independent values with `openssl rand -hex 32`; do not copy the literal placeholder values from the example environment files.
 
 OAuth-related HTTP routes:
 

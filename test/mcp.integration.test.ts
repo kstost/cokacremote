@@ -29,7 +29,7 @@ describe("remote development MCP server", () => {
     temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "remote-dev-mcp-http-test-"));
     config = loadConfig(
       {
-        MCP_AUTH_TOKEN: "integration-secret",
+        MCP_AUTH_TOKEN: "integration-secret-0123456789abcdef",
         MCP_HOST: "127.0.0.1",
         MCP_DEFAULT_CWD: temporaryDirectory,
         MCP_MAX_FILE_CHUNK_BYTES: "65536",
@@ -65,6 +65,9 @@ describe("remote development MCP server", () => {
     });
 
     expect(response.status).toBe(401);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
   it("authenticates MCP requests before parsing their JSON body", async () => {
@@ -78,7 +81,7 @@ describe("remote development MCP server", () => {
     const authenticated = await fetch(endpoint, {
       method: "POST",
       headers: {
-        authorization: "Bearer integration-secret",
+        authorization: "Bearer integration-secret-0123456789abcdef",
         "content-type": "application/json",
       },
       body: "{",
@@ -90,7 +93,7 @@ describe("remote development MCP server", () => {
     const client = new Client({ name: "integration-test", version: "1.0.0" });
     const transport = new StreamableHTTPClientTransport(endpoint, {
       requestInit: {
-        headers: { Authorization: "Bearer integration-secret" },
+        headers: { Authorization: "Bearer integration-secret-0123456789abcdef" },
       },
     });
     await client.connect(transport);
@@ -157,7 +160,7 @@ describe("remote development MCP server", () => {
       fetch(endpoint, {
         method: "POST",
         headers: {
-          authorization: "Bearer integration-secret",
+          authorization: "Bearer integration-secret-0123456789abcdef",
           accept: "application/json, text/event-stream",
           "content-type": "application/json",
           ...additionalHeaders,
@@ -250,7 +253,7 @@ describe("remote development MCP server", () => {
 
     const getResponse = await fetch(endpoint, {
       headers: {
-        authorization: "Bearer integration-secret",
+        authorization: "Bearer integration-secret-0123456789abcdef",
         accept: "text/event-stream",
       },
     });

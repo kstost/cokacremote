@@ -1,5 +1,8 @@
 import path from "node:path";
 
+const MIN_AUTH_SECRET_CHARACTERS = 32;
+const PLACEHOLDER_SECRET_PREFIX = "replace-with-";
+
 export interface AppConfig {
   host: string;
   port: number;
@@ -62,6 +65,20 @@ function parseInteger(
   return parsed;
 }
 
+function validateAuthSecret(value: string | undefined, name: string): void {
+  if (value === undefined) {
+    return;
+  }
+  if (
+    value.length < MIN_AUTH_SECRET_CHARACTERS ||
+    value.toLowerCase().startsWith(PLACEHOLDER_SECRET_PREFIX)
+  ) {
+    throw new Error(
+      `${name} must be at least ${MIN_AUTH_SECRET_CHARACTERS} characters and must not be an example placeholder; generate one with 'openssl rand -hex 32'`,
+    );
+  }
+}
+
 function normalizeEndpoint(value: string | undefined): string {
   const endpoint = value?.trim() || "/mcp";
   if (!endpoint.startsWith("/")) {
@@ -106,6 +123,8 @@ export function loadConfig(
   const oauthApprovalKey = oauthEnabled
     ? env.MCP_OAUTH_APPROVAL_KEY?.trim() || authToken
     : undefined;
+  validateAuthSecret(authToken, "MCP_AUTH_TOKEN");
+  validateAuthSecret(oauthApprovalKey, "MCP_OAUTH_APPROVAL_KEY");
   if (!allowNoAuth && !authToken && !oauthEnabled) {
     throw new Error(
       "MCP_AUTH_TOKEN is required. Set MCP_ALLOW_NO_AUTH=true only when an upstream OAuth gateway or private network authenticates callers.",

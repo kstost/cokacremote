@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { mkdir, open, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { OAuthRegisteredClientsStore } from "@modelcontextprotocol/sdk/server/auth/clients.js";
@@ -195,12 +196,32 @@ class PersistentOAuthStore implements OAuthRegisteredClientsStore {
 
   private async ensureLoaded(): Promise<void> {
     this.loadPromise ??= (async () => {
+      let handle: Awaited<ReturnType<typeof open>> | undefined;
       try {
-        this.state = parseState(await readFile(this.stateFile, "utf8"));
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-          throw error;
+        const noFollowFlag = process.platform === "win32" ? 0 : constants.O_NOFOLLOW;
+        handle = await open(this.stateFile, constants.O_RDONLY | noFollowFlag);
+        const info = await handle.stat();
+        if (!info.isFile()) {
+          throw new Error("OAuth state path must be a regular file");
         }
+        if (typeof process.geteuid === "function" && info.uid !== process.geteuid()) {
+          throw new Error("OAuth state file must be owned by the service user");
+        }
+        if (process.platform !== "win32" && (info.mode & 0o077) !== 0) {
+          throw new Error("OAuth state file permissions must not grant group or other access");
+        }
+        this.state = parseState(await handle.readFile("utf8"));
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") {
+          return;
+        }
+        if (code === "ELOOP") {
+          throw new Error("OAuth state file must not be a symbolic link", { cause: error });
+        }
+        throw error;
+      } finally {
+        await handle?.close();
       }
     })();
     await this.loadPromise;

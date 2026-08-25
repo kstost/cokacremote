@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { createServer } from "node:net";
 import os from "node:os";
@@ -34,7 +34,7 @@ describe("OAuth endpoint security boundaries", () => {
     const config = loadConfig(
       {
         MCP_OAUTH_ENABLED: "true",
-        MCP_OAUTH_APPROVAL_KEY: "oauth-approval-key",
+        MCP_OAUTH_APPROVAL_KEY: "oauth-approval-key-0123456789abcdef",
         MCP_PUBLIC_URL: baseUrl,
         MCP_OAUTH_STATE_FILE: path.join(temporaryDirectory, "oauth-state.json"),
         MCP_HOST: "127.0.0.1",
@@ -49,7 +49,7 @@ describe("OAuth endpoint security boundaries", () => {
       const approvalKeyAsBearer = await fetch(`${baseUrl}/mcp`, {
         method: "POST",
         headers: {
-          authorization: "Bearer oauth-approval-key",
+          authorization: "Bearer oauth-approval-key-0123456789abcdef",
           "content-type": "application/json",
         },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }),
@@ -90,7 +90,7 @@ describe("OAuth endpoint security boundaries", () => {
     );
     const baseEnvironment = {
       MCP_OAUTH_ENABLED: "true",
-      MCP_OAUTH_APPROVAL_KEY: "oauth-approval-key",
+      MCP_OAUTH_APPROVAL_KEY: "oauth-approval-key-0123456789abcdef",
       MCP_PUBLIC_URL: "http://127.0.0.1:34567",
     };
     const metadata = {
@@ -160,6 +160,52 @@ describe("OAuth endpoint security boundaries", () => {
           undefined,
         ),
       ).resolves.toMatchObject({ status: "invalid" });
+    } finally {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects OAuth state files that are exposed or redirected by a symlink", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+    const temporaryDirectory = await mkdtemp(
+      path.join(os.tmpdir(), "cokacremote-oauth-state-security-test-"),
+    );
+    const state = JSON.stringify({ version: 1, clients: {}, tokens: {} });
+    const baseEnvironment = {
+      MCP_OAUTH_ENABLED: "true",
+      MCP_OAUTH_APPROVAL_KEY: "oauth-approval-key-0123456789abcdef",
+      MCP_PUBLIC_URL: "http://127.0.0.1:34567",
+    };
+
+    try {
+      const permissiveStateFile = path.join(temporaryDirectory, "permissive.json");
+      await writeFile(permissiveStateFile, state, { mode: 0o600 });
+      await chmod(permissiveStateFile, 0o644);
+      const permissiveProvider = new RemoteDevOAuthProvider(
+        loadConfig(
+          { ...baseEnvironment, MCP_OAUTH_STATE_FILE: permissiveStateFile },
+          temporaryDirectory,
+        ),
+      );
+      await expect(permissiveProvider.clientsStore.getClient("missing")).rejects.toThrow(
+        "permissions must not grant group or other access",
+      );
+
+      const targetFile = path.join(temporaryDirectory, "target.json");
+      const linkedStateFile = path.join(temporaryDirectory, "linked.json");
+      await writeFile(targetFile, state, { mode: 0o600 });
+      await symlink(targetFile, linkedStateFile);
+      const linkedProvider = new RemoteDevOAuthProvider(
+        loadConfig(
+          { ...baseEnvironment, MCP_OAUTH_STATE_FILE: linkedStateFile },
+          temporaryDirectory,
+        ),
+      );
+      await expect(linkedProvider.clientsStore.getClient("missing")).rejects.toThrow(
+        "must not be a symbolic link",
+      );
     } finally {
       await rm(temporaryDirectory, { recursive: true, force: true });
     }

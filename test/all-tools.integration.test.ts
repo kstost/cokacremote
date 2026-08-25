@@ -110,7 +110,7 @@ describe.sequential("all registered MCP tools", () => {
     } else {
       localDirectory = await mkdtemp(path.join(os.tmpdir(), "cokacremote-all-tools-"));
       testRoot = path.join(localDirectory, "tool-root");
-      authToken = "all-tools-test-secret";
+      authToken = "all-tools-test-secret-0123456789abcdef";
       const config = loadConfig(
         {
           MCP_AUTH_TOKEN: authToken,
@@ -249,7 +249,9 @@ describe.sequential("all registered MCP tools", () => {
       env: "script-env-ok",
       stdin: "script-stdin-ok",
     });
-    expect(String(script.scriptPath)).toMatch(/^\/tmp\/remote-dev-mcp-script-/);
+    expect(path.relative(os.tmpdir(), String(script.scriptPath))).toMatch(
+      /^remote-dev-mcp-script-[^/]+\/script\.mjs$/,
+    );
     const keptScript = await callOk("stat_path", { path: script.scriptPath });
     expect(keptScript).toMatchObject({ type: "file", mode: "0700" });
     await callOk("remove_path", {

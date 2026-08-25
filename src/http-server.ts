@@ -58,6 +58,14 @@ export async function startHttpServer(
 ): Promise<RunningHttpServer> {
   const app = express();
   app.disable("x-powered-by");
+  app.use((_request, response, next) => {
+    response.set({
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+    });
+    next();
+  });
   if (config.trustProxyHops > 0) {
     app.set("trust proxy", config.trustProxyHops);
   }
@@ -111,12 +119,23 @@ export async function startHttpServer(
         resource_name: "cokacremote",
       });
     });
+    const rateLimitOptions = config.trustProxyHops === 0
+      ? { validate: { xForwardedForHeader: false } }
+      : undefined;
     const oauthRouterOptions = {
       provider: oauthProvider,
       issuerUrl: oauthProvider.issuerUrl,
       resourceServerUrl: oauthProvider.resourceUrl,
       scopesSupported: [...OAUTH_SCOPES],
       resourceName: "cokacremote",
+      ...(rateLimitOptions
+        ? {
+            authorizationOptions: { rateLimit: rateLimitOptions },
+            clientRegistrationOptions: { rateLimit: rateLimitOptions },
+            revocationOptions: { rateLimit: rateLimitOptions },
+            tokenOptions: { rateLimit: rateLimitOptions },
+          }
+        : {}),
     } satisfies AuthRouterOptions;
     const oauthMetadata = {
       ...createOAuthMetadata(oauthRouterOptions),

@@ -49,7 +49,7 @@ describe("OAuth 2.1 MCP authorization", () => {
     config = loadConfig(
       {
         MCP_OAUTH_ENABLED: "true",
-        MCP_OAUTH_APPROVAL_KEY: "oauth-login-secret",
+        MCP_OAUTH_APPROVAL_KEY: "oauth-login-secret-0123456789abcdef",
         MCP_PUBLIC_URL: baseUrl,
         MCP_OAUTH_STATE_FILE: stateFile,
         MCP_HOST: "127.0.0.1",
@@ -206,7 +206,10 @@ describe("OAuth 2.1 MCP authorization", () => {
     const approvedLogin = await fetch(`${baseUrl}/authorize`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: form({ ...authorizationValues, access_key: "oauth-login-secret" }),
+      body: form({
+        ...authorizationValues,
+        access_key: "oauth-login-secret-0123456789abcdef",
+      }),
       redirect: "manual",
     });
     expect(approvedLogin.status).toBe(303);
