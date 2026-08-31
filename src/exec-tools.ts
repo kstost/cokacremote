@@ -98,7 +98,14 @@ export function registerExecTools(
       maxOutputBytes,
     }) =>
       runTool(() => traceTaskTool(taskJournal, taskId, "exec_command", async () => {
-        enforceAssessment(safetyPolicy, safetyPolicy.assessCommand(cmd), "exec_command", cmd.slice(0, 300), approvalId);
+        enforceAssessment(
+          safetyPolicy,
+          safetyPolicy.assessCommand(cmd),
+          "exec_command",
+          cmd.slice(0, 300),
+          approvalId,
+          JSON.stringify({ cmd, cwd: fileService.resolve(".", workdir), shell: shell || config.defaultShell, login, env, stdin }),
+        );
         const cwd = fileService.resolve(".", workdir);
         const executable = shell || config.defaultShell;
         const sessionId = processManager.start({
@@ -190,7 +197,14 @@ export function registerExecTools(
       keepScript,
     }) =>
       runTool(() => traceTaskTool(taskJournal, taskId, "run_script", async () => {
-        enforceAssessment(safetyPolicy, safetyPolicy.assessCommand(script), "run_script", `${runtime} script: ${script.slice(0, 240)}`, approvalId);
+        enforceAssessment(
+          safetyPolicy,
+          safetyPolicy.assessCommand(script),
+          "run_script",
+          `${runtime} script: ${script.slice(0, 240)}`,
+          approvalId,
+          JSON.stringify({ runtime, script, cwd: fileService.resolve(".", workdir), args, env, interpreter, interpreterArgs, stdin }),
+        );
         const result = await runScript(processManager, {
           runtime,
           script,

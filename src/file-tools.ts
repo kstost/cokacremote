@@ -41,9 +41,17 @@ const fileModeSchema = z
   .optional()
   .describe("Unix mode written as an octal string, for example 0755.");
 
-function enforcePath(policy: SafetyPolicy, files: FileService, toolName: string, target: string, cwd: string | undefined, approvalId: string | undefined): void {
+function enforcePath(
+  policy: SafetyPolicy,
+  files: FileService,
+  toolName: string,
+  target: string,
+  cwd: string | undefined,
+  approvalId: string | undefined,
+  operation: unknown,
+): void {
   const resolved = files.resolve(target, cwd);
-  enforceAssessment(policy, policy.assessPath(toolName, resolved), toolName, resolved, approvalId);
+  enforceAssessment(policy, policy.assessPath(toolName, resolved), toolName, resolved, approvalId, JSON.stringify(operation));
 }
 
 function parseMode(mode: string | undefined): number | undefined {
@@ -145,7 +153,7 @@ export function registerFileTools(
     },
     async ({ path, cwd, content, encoding, mode, createParents, fileMode, taskId, approvalId }) =>
       runTool(() => traceTaskTool(journal, taskId, "write_file", async () => {
-        enforcePath(safetyPolicy, files, "write_file", path, cwd, approvalId);
+        enforcePath(safetyPolicy, files, "write_file", path, cwd, approvalId, { path: files.resolve(path, cwd), content, encoding, mode, createParents, fileMode });
         const result = await files.writeFileContent(path, cwd, content, encoding, mode, createParents, parseMode(fileMode));
         if (taskId) await journal.record("file.changed", { taskId, path: files.resolve(path, cwd), operation: "write_file" });
         return result;
@@ -172,7 +180,7 @@ export function registerFileTools(
     },
     async ({ path, cwd, oldText, newText, replaceAll, expectedOccurrences, taskId, approvalId }) =>
       runTool(() => traceTaskTool(journal, taskId, "replace_in_file", async () => {
-        enforcePath(safetyPolicy, files, "replace_in_file", path, cwd, approvalId);
+        enforcePath(safetyPolicy, files, "replace_in_file", path, cwd, approvalId, { path: files.resolve(path, cwd), oldText, newText, replaceAll, expectedOccurrences });
         const result = await files.replaceInFile(path, cwd, oldText, newText, replaceAll, expectedOccurrences);
         if (taskId) await journal.record("file.changed", { taskId, path: files.resolve(path, cwd), operation: "replace_in_file" });
         return result;
@@ -198,7 +206,14 @@ export function registerFileTools(
     },
     async ({ patch, cwd, checkOnly, reverse, threeWay, taskId, approvalId }) =>
       runTool(() => traceTaskTool(journal, taskId, "apply_patch", async () => {
-        if (!checkOnly) enforceAssessment(safetyPolicy, safetyPolicy.assessPath("apply_patch", files.resolve(".", cwd)), "apply_patch", `patch in ${files.resolve(".", cwd)}`, approvalId);
+        if (!checkOnly) enforceAssessment(
+          safetyPolicy,
+          safetyPolicy.assessPath("apply_patch", files.resolve(".", cwd)),
+          "apply_patch",
+          `patch in ${files.resolve(".", cwd)}`,
+          approvalId,
+          JSON.stringify({ cwd: files.resolve(".", cwd), patch, reverse, threeWay }),
+        );
         const result = await files.applyPatch(patch, cwd, { checkOnly, reverse, threeWay });
         if (taskId && !checkOnly) {
           const names = [...patch.matchAll(/^\+\+\+\s+(?:b\/)?(.+)$/gm)].map((match) => match[1]!).filter((name) => name !== "/dev/null");
@@ -228,7 +243,7 @@ export function registerFileTools(
     },
     async ({ path, cwd, dataBase64, offset, truncate, createParents, taskId, approvalId }) =>
       runTool(() => traceTaskTool(journal, taskId, "upload_file", async () => {
-        enforcePath(safetyPolicy, files, "upload_file", path, cwd, approvalId);
+        enforcePath(safetyPolicy, files, "upload_file", path, cwd, approvalId, { path: files.resolve(path, cwd), dataBase64, offset, truncate, createParents });
         const result = await files.uploadChunk(path, cwd, dataBase64, offset, truncate, createParents);
         if (taskId) await journal.record("file.changed", { taskId, path: files.resolve(path, cwd), operation: "upload_file" });
         return result;
@@ -273,7 +288,7 @@ export function registerFileTools(
       annotations: writeAnnotations,
     },
     async ({ path, cwd, recursive, mode, approvalId }) =>
-      runTool(() => { enforcePath(safetyPolicy, files, "make_directory", path, cwd, approvalId); return files.makeDirectory(path, cwd, recursive, parseMode(mode)); }),
+      runTool(() => { enforcePath(safetyPolicy, files, "make_directory", path, cwd, approvalId, { path: files.resolve(path, cwd), recursive, mode }); return files.makeDirectory(path, cwd, recursive, parseMode(mode)); }),
   );
 
   server.registerTool(
@@ -292,7 +307,7 @@ export function registerFileTools(
       annotations: writeAnnotations,
     },
     async ({ sourcePath, destinationPath, cwd, recursive, force, approvalId }) =>
-      runTool(() => { enforcePath(safetyPolicy, files, "copy_path", destinationPath, cwd, approvalId); return files.copyPath(sourcePath, destinationPath, cwd, recursive, force); }),
+      runTool(() => { enforcePath(safetyPolicy, files, "copy_path", destinationPath, cwd, approvalId, { source: files.resolve(sourcePath, cwd), destination: files.resolve(destinationPath, cwd), recursive, force }); return files.copyPath(sourcePath, destinationPath, cwd, recursive, force); }),
   );
 
   server.registerTool(
@@ -316,7 +331,7 @@ export function registerFileTools(
         const sourceAssessment = safetyPolicy.assessPath("move_path", source);
         const destinationAssessment = safetyPolicy.assessPath("move_path", destination);
         const assessment = sourceAssessment.decision === "deny" ? sourceAssessment : destinationAssessment.decision === "deny" ? destinationAssessment : sourceAssessment.decision === "approval-required" ? sourceAssessment : destinationAssessment;
-        enforceAssessment(safetyPolicy, assessment, "move_path", `${source} -> ${destination}`, approvalId);
+        enforceAssessment(safetyPolicy, assessment, "move_path", `${source} -> ${destination}`, approvalId, JSON.stringify({ source, destination, overwrite }));
         return files.movePath(sourcePath, destinationPath, cwd, overwrite);
       }),
   );
@@ -337,7 +352,7 @@ export function registerFileTools(
       annotations: writeAnnotations,
     },
     async ({ path, cwd, recursive, force, approvalId }) =>
-      runTool(() => { enforcePath(safetyPolicy, files, "remove_path", path, cwd, approvalId); return files.removePath(path, cwd, recursive, force); }),
+      runTool(() => { enforcePath(safetyPolicy, files, "remove_path", path, cwd, approvalId, { path: files.resolve(path, cwd), recursive, force }); return files.removePath(path, cwd, recursive, force); }),
   );
 
   server.registerTool(
@@ -354,7 +369,7 @@ export function registerFileTools(
       annotations: writeAnnotations,
     },
     async ({ path, cwd, mode, approvalId }) =>
-      runTool(() => { enforcePath(safetyPolicy, files, "chmod_path", path, cwd, approvalId); return files.changeMode(path, cwd, parseMode(mode) ?? 0); }),
+      runTool(() => { enforcePath(safetyPolicy, files, "chmod_path", path, cwd, approvalId, { path: files.resolve(path, cwd), mode }); return files.changeMode(path, cwd, parseMode(mode) ?? 0); }),
   );
 
   server.registerTool(

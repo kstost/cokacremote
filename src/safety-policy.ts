@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import type { SafetyPolicyFile } from "./safety-policy-file.js";
 
@@ -14,6 +14,7 @@ export interface PendingApproval {
   approvalId: string;
   toolName: string;
   summary: string;
+  operationFingerprint: string;
   createdAt: string;
   expiresAt: string;
   approvedAt?: string;
@@ -39,6 +40,10 @@ const APPROVAL_COMMANDS = [
   /(?:^|[;&|]\s*)rm\s+[^\n]*-[^\s]*r/i,
   /(?:^|[;&|]\s*)chmod\s+[^\n]*(?:777|666)\b/i,
 ];
+
+export function safetyOperationFingerprint(toolName: string, operation: string): string {
+  return createHash("sha256").update(toolName).update("\0").update(operation).digest("hex");
+}
 
 function within(root: string, target: string): boolean {
   const relative = path.relative(root, target);
@@ -104,7 +109,7 @@ export class SafetyPolicy {
     };
   }
 
-  request(toolName: string, summary: string): PendingApproval {
+  request(toolName: string, summary: string, operation: string): PendingApproval {
     this.prune();
     const approvalId = randomUUID();
     const created = Date.now();
@@ -112,6 +117,7 @@ export class SafetyPolicy {
       approvalId,
       toolName,
       summary,
+      operationFingerprint: safetyOperationFingerprint(toolName, operation),
       createdAt: new Date(created).toISOString(),
       expiresAt: new Date(created + 10 * 60_000).toISOString(),
     };
@@ -126,10 +132,11 @@ export class SafetyPolicy {
     return { ...approval };
   }
 
-  consume(approvalId: string | undefined, toolName: string): boolean {
+  consume(approvalId: string | undefined, toolName: string, operation: string): boolean {
     if (!approvalId) return false;
     const approval = this.#require(approvalId);
     if (approval.toolName !== toolName) throw new Error("Approval is for a different tool");
+    if (approval.operationFingerprint !== safetyOperationFingerprint(toolName, operation)) throw new Error("Approval does not match this operation");
     if (!approval.approvedAt) throw new Error("Approval is still pending");
     if (approval.consumedAt) throw new Error("Approval has already been consumed");
     approval.consumedAt = new Date().toISOString();
@@ -164,10 +171,11 @@ export function enforceAssessment(
   toolName: string,
   summary: string,
   approvalId?: string,
+  operation = summary,
 ): void {
   if (assessment.decision === "allow") return;
   if (assessment.decision === "deny") throw new Error(`Safety policy denied ${toolName}: ${assessment.reason}`);
-  if (approvalId && policy.consume(approvalId, toolName)) return;
-  const pending = policy.request(toolName, summary);
+  if (approvalId && policy.consume(approvalId, toolName, operation)) return;
+  const pending = policy.request(toolName, summary, operation);
   throw new Error(`Safety approval required: ${assessment.reason}. approvalId=${pending.approvalId}. Approve it in /dashboard, then retry with approvalId.`);
 }

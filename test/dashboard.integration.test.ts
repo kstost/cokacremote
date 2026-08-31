@@ -35,7 +35,7 @@ describe("task dashboard", () => {
     expect(tasks.tasks.some((item) => item.taskId === task.taskId)).toBe(true);
     const events = await (await fetch(`${base}/api/tasks/${task.taskId}/events`, { headers })).json() as { events: Array<{ event: string }> };
     expect(events.events.map((event) => event.event)).toEqual(["task.started", "tool.started", "tool.completed"]);
-    const pending = services.safetyPolicy.request("exec_command", "sudo systemctl restart nginx");
+    const pending = services.safetyPolicy.request("exec_command", "sudo systemctl restart nginx", "sudo systemctl restart nginx");
     const approvals = await (await fetch(`${base}/api/approvals`, { headers })).json() as { approvals: Array<{ approvalId: string }> };
     expect(approvals.approvals.some((item) => item.approvalId === pending.approvalId)).toBe(true);
     const approved = await fetch(`${base}/api/approvals/${pending.approvalId}/approve`, { method: "POST", headers });

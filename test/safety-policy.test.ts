@@ -21,12 +21,13 @@ describe("SafetyPolicy", () => {
   it("uses a human-approved approval only once", () => {
     const policy = new SafetyPolicy("safe", "/workspace/app");
     const assessment = policy.assessCommand("sudo systemctl restart nginx");
-    expect(() => enforceAssessment(policy, assessment, "exec_command", "restart nginx")).toThrow(/approvalId=/);
+    expect(() => enforceAssessment(policy, assessment, "exec_command", "restart nginx", undefined, "sudo systemctl restart nginx")).toThrow(/approvalId=/);
     const pending = policy.list()[0]!;
-    expect(() => policy.consume(pending.approvalId, "exec_command")).toThrow("still pending");
+    expect(() => policy.consume(pending.approvalId, "exec_command", "sudo systemctl restart nginx")).toThrow("still pending");
     policy.approve(pending.approvalId);
-    expect(policy.consume(pending.approvalId, "exec_command")).toBe(true);
-    expect(() => policy.consume(pending.approvalId, "exec_command")).toThrow("already been consumed");
+    expect(() => policy.consume(pending.approvalId, "exec_command", "sudo systemctl stop nginx")).toThrow("does not match this operation");
+    expect(policy.consume(pending.approvalId, "exec_command", "sudo systemctl restart nginx")).toBe(true);
+    expect(() => policy.consume(pending.approvalId, "exec_command", "sudo systemctl restart nginx")).toThrow("already been consumed");
   });
 });
 
