@@ -127,6 +127,22 @@ describe("loadConfig", () => {
       ),
     ).toThrow("must not contain user credentials");
   });
+
+  it("validates optional dashboard account settings", () => {
+    const config = loadConfig({
+      MCP_AUTH_TOKEN: AUTH_SECRET,
+      MCP_DASHBOARD_USERNAME: "admin",
+      MCP_DASHBOARD_PASSWORD: "correct-horse-battery-staple",
+    }, "/tmp");
+    expect(config).toMatchObject({
+      dashboardUsername: "admin",
+      dashboardPassword: "correct-horse-battery-staple",
+      dashboardSessionSecret: AUTH_SECRET,
+    });
+    expect(() => loadConfig({ MCP_AUTH_TOKEN: AUTH_SECRET, MCP_DASHBOARD_USERNAME: "admin" }, "/tmp")).toThrow("configured together");
+    expect(() => loadConfig({ MCP_AUTH_TOKEN: AUTH_SECRET, MCP_DASHBOARD_USERNAME: "admin", MCP_DASHBOARD_PASSWORD: "short" }, "/tmp")).toThrow("at least 12 characters");
+    expect(() => loadConfig({ MCP_AUTH_TOKEN: AUTH_SECRET, MCP_DASHBOARD_USERNAME: "admin", MCP_DASHBOARD_PASSWORD: "replace-with-dashboard-password" }, "/tmp")).toThrow("example placeholder");
+  });
 });
 
 describe("lifecycle configuration", () => {

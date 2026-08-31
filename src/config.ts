@@ -34,6 +34,9 @@ export interface AppConfig {
   maxEditFileBytes: number;
   safetyMode: "unrestricted" | "safe";
   safetyPolicyFile: string | undefined;
+  dashboardUsername: string | undefined;
+  dashboardPassword: string | undefined;
+  dashboardSessionSecret: string | undefined;
 }
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
@@ -148,6 +151,18 @@ export function loadConfig(
       "MCP_OAUTH_APPROVAL_KEY (or MCP_AUTH_TOKEN for backward compatibility) is required when OAuth is enabled",
     );
   }
+  const dashboardUsername = env.MCP_DASHBOARD_USERNAME?.trim() || undefined;
+  const dashboardPassword = env.MCP_DASHBOARD_PASSWORD || undefined;
+  if (Boolean(dashboardUsername) !== Boolean(dashboardPassword)) {
+    throw new Error("MCP_DASHBOARD_USERNAME and MCP_DASHBOARD_PASSWORD must be configured together");
+  }
+  if (dashboardPassword && (dashboardPassword.length < 12 || dashboardPassword.toLowerCase().startsWith(PLACEHOLDER_SECRET_PREFIX))) {
+    throw new Error("MCP_DASHBOARD_PASSWORD must be at least 12 characters and must not be an example placeholder");
+  }
+  const dashboardSessionSecret = env.MCP_DASHBOARD_SESSION_SECRET?.trim() || authToken || oauthApprovalKey || dashboardPassword;
+  if (dashboardUsername && (!dashboardSessionSecret || dashboardSessionSecret.length < 32)) {
+    throw new Error("MCP_DASHBOARD_SESSION_SECRET must be at least 32 characters when no 32+ character MCP auth secret is available");
+  }
 
   const defaultCwd = path.resolve(env.MCP_DEFAULT_CWD?.trim() || processCwd);
   const allowedHosts = env.MCP_ALLOWED_HOSTS?.split(",")
@@ -258,6 +273,9 @@ export function loadConfig(
     ),
     safetyMode: parseSafetyMode(env.MCP_SAFETY_MODE),
     safetyPolicyFile: env.MCP_SAFETY_POLICY_FILE?.trim() ? path.resolve(processCwd, env.MCP_SAFETY_POLICY_FILE.trim()) : undefined,
+    dashboardUsername,
+    dashboardPassword,
+    dashboardSessionSecret,
     maxEditFileBytes: parseInteger(
       env.MCP_MAX_EDIT_FILE_BYTES,
       64 * 1024 * 1024,
