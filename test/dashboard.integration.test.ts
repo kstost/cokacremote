@@ -32,9 +32,14 @@ describe("task dashboard", () => {
     expect(html.status).toBe(200);
     const dashboardHtml = await html.text();
     expect(dashboardHtml).toContain("Development task timeline");
-    const script = dashboardHtml.match(/<script>([\s\S]*?)<\/script>/)?.[1];
-    expect(script).toBeTruthy();
-    expect(() => new Function(script!)).not.toThrow();
+    expect(dashboardHtml).toContain('/dashboard/app.js');
+    expect(dashboardHtml).toContain('작업 목록');
+    const appJsResponse = await fetch(`${base}/app.js`);
+    expect(appJsResponse.status).toBe(200);
+    const appJs = await appJsResponse.text();
+    expect(appJs).toContain("currentTab='overview'");
+    expect(appJs).toContain('Raw events');
+    expect(() => new Function(appJs)).not.toThrow();
     const tasks = await (await fetch(`${base}/api/tasks`, { headers })).json() as { tasks: Array<{ taskId: string }> };
     expect(tasks.tasks.some((item) => item.taskId === task.taskId)).toBe(true);
     const events = await (await fetch(`${base}/api/tasks/${task.taskId}/events`, { headers })).json() as { events: Array<{ event: string }> };
