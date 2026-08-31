@@ -30,6 +30,7 @@ export interface SafetyPolicyFile {
 }
 
 const DECISIONS = new Set<SafetyDecision>(["allow", "approval-required", "deny"]);
+const PATH_TOOLS = new Set(["write_file", "replace_in_file", "apply_patch", "upload_file", "make_directory", "copy_path", "move_path", "remove_path", "chmod_path"]);
 
 function asObject(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be an object`);
@@ -50,12 +51,14 @@ function decision(value: unknown, label: string): SafetyDecision {
 
 export function parseSafetyPolicyFile(value: unknown): SafetyPolicyFile {
   const root = asObject(value, "Safety policy");
+  for (const key of Object.keys(root)) if (!["version", "commands", "paths", "defaults"].includes(key)) throw new Error(`Safety policy contains unknown key: ${key}`);
   if (root.version !== 1) throw new Error("Safety policy version must be 1");
 
   const commands = root.commands === undefined ? undefined : (() => {
     if (!Array.isArray(root.commands)) throw new Error("Safety policy commands must be an array");
     return root.commands.map((raw, index) => {
       const item = asObject(raw, `commands[${index}]`);
+      for (const key of Object.keys(item)) if (!["id", "pattern", "flags", "decision", "reason"].includes(key)) throw new Error(`commands[${index}] contains unknown key: ${key}`);
       const pattern = requiredString(item.pattern, `commands[${index}].pattern`);
       const flags = item.flags === undefined ? "i" : requiredString(item.flags, `commands[${index}].flags`);
       try { new RegExp(pattern, flags); } catch (error) { throw new Error(`commands[${index}].pattern is invalid: ${String(error)}`); }
@@ -73,12 +76,14 @@ export function parseSafetyPolicyFile(value: unknown): SafetyPolicyFile {
     if (!Array.isArray(root.paths)) throw new Error("Safety policy paths must be an array");
     return root.paths.map((raw, index) => {
       const item = asObject(raw, `paths[${index}]`);
+      for (const key of Object.keys(item)) if (!["id", "prefix", "tools", "decision", "reason"].includes(key)) throw new Error(`paths[${index}] contains unknown key: ${key}`);
       let tools: string[] | undefined;
       if (item.tools !== undefined) {
         if (!Array.isArray(item.tools) || item.tools.some((tool) => typeof tool !== "string" || tool.trim() === "")) {
           throw new Error(`paths[${index}].tools must be an array of non-empty strings`);
         }
         tools = item.tools as string[];
+        for (const tool of tools) if (!PATH_TOOLS.has(tool)) throw new Error(`paths[${index}].tools contains unknown mutating tool: ${tool}`);
       }
       return {
         id: requiredString(item.id, `paths[${index}].id`),
@@ -93,12 +98,15 @@ export function parseSafetyPolicyFile(value: unknown): SafetyPolicyFile {
   let defaults: SafetyPolicyFile["defaults"];
   if (root.defaults !== undefined) {
     const raw = asObject(root.defaults, "Safety policy defaults");
+    for (const key of Object.keys(raw)) if (!["unmatchedCommand", "outsideWorkspace"].includes(key)) throw new Error(`Safety policy defaults contains unknown key: ${key}`);
     defaults = {
       ...(raw.unmatchedCommand !== undefined ? { unmatchedCommand: decision(raw.unmatchedCommand, "defaults.unmatchedCommand") } : {}),
       ...(raw.outsideWorkspace !== undefined ? { outsideWorkspace: decision(raw.outsideWorkspace, "defaults.outsideWorkspace") } : {}),
     };
   }
 
+  const ids = [...(commands ?? []).map((rule) => rule.id), ...(paths ?? []).map((rule) => rule.id)];
+  if (new Set(ids).size !== ids.length) throw new Error("Safety policy rule IDs must be unique");
   return { version: 1, ...(commands ? { commands } : {}), ...(paths ? { paths } : {}), ...(defaults ? { defaults } : {}) };
 }
 

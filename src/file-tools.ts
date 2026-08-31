@@ -317,7 +317,15 @@ export function registerFileTools(
       annotations: writeAnnotations,
     },
     async ({ sourcePath, destinationPath, cwd, recursive, force, approvalId }) =>
-      runTool(() => { enforcePath(safetyPolicy, files, "copy_path", destinationPath, cwd, approvalId, { source: files.resolve(sourcePath, cwd), destination: files.resolve(destinationPath, cwd), recursive, force }); return files.copyPath(sourcePath, destinationPath, cwd, recursive, force); }),
+      runTool(() => {
+        const source = files.resolve(sourcePath, cwd);
+        const destination = files.resolve(destinationPath, cwd);
+        const sourceAssessment = safetyPolicy.assessPath("copy_path", source);
+        const destinationAssessment = safetyPolicy.assessPath("copy_path", destination);
+        const assessment = sourceAssessment.decision === "deny" ? sourceAssessment : destinationAssessment.decision === "deny" ? destinationAssessment : sourceAssessment.decision === "approval-required" ? sourceAssessment : destinationAssessment;
+        enforceAssessment(safetyPolicy, assessment, "copy_path", `${source} -> ${destination}`, approvalId, JSON.stringify({ source, destination, recursive, force }));
+        return files.copyPath(sourcePath, destinationPath, cwd, recursive, force);
+      }),
   );
 
   server.registerTool(

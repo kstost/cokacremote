@@ -90,4 +90,11 @@ describe("SafetyPolicy file", () => {
     expect(policy.deny(pending.approvalId).approvalId).toBe(pending.approvalId);
     expect(policy.list()).toEqual([]);
   });
+
+  it("rejects unknown policy keys, duplicate IDs, and unknown path tools", () => {
+    expect(() => parseSafetyPolicyFile({ version: 1, typo: true })).toThrow("unknown key");
+    expect(() => parseSafetyPolicyFile({ version: 1, defaults: { outsideWorkspace: "deny", typo: true } })).toThrow("unknown key");
+    expect(() => parseSafetyPolicyFile({ version: 1, commands: [{ id: "same", pattern: "x", decision: "allow" }], paths: [{ id: "same", prefix: "/tmp", decision: "deny" }] })).toThrow("unique");
+    expect(() => parseSafetyPolicyFile({ version: 1, paths: [{ id: "x", prefix: "/tmp", tools: ["read_file"], decision: "deny" }] })).toThrow("unknown mutating tool");
+  });
 });
