@@ -55,5 +55,18 @@ describe("task dashboard", () => {
     const reloaded = await fetch(`${base}/api/policy/reload`, { method: "POST", headers });
     expect(reloaded.status).toBe(200);
     expect(services.safetyPolicy.assessCommand("danger").decision).toBe("allow");
+    const historyResponse = await (await fetch(`${base}/api/policy/history`, { headers })).json() as { history: Array<{ revisionId: string; action: string; sha256: string }> };
+    expect(historyResponse.history.map((entry) => entry.action)).toEqual(["reload", "save"]);
+    expect(historyResponse.history.every((entry) => entry.sha256.length === 64)).toBe(true);
+    const saveRevision = historyResponse.history.find((entry) => entry.action === "save");
+    expect(saveRevision).toBeTruthy();
+    const rollback = await fetch(`${base}/api/policy/rollback/${saveRevision!.revisionId}`, { method: "POST", headers });
+    expect(rollback.status).toBe(200);
+    expect(services.safetyPolicy.assessCommand("danger").decision).toBe("deny");
+    const afterRollback = await (await fetch(`${base}/api/policy/history`, { headers })).json() as { history: Array<{ action: string; rollbackFromRevisionId?: string }> };
+    expect(afterRollback.history[0]!.action).toBe("rollback");
+    expect(afterRollback.history[0]!.rollbackFromRevisionId).toBe(saveRevision!.revisionId);
+    const missingRollback = await fetch(`${base}/api/policy/rollback/not-a-revision`, { method: "POST", headers });
+    expect(missingRollback.status).toBe(404);
   });
 });
