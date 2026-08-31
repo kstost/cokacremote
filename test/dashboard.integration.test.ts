@@ -41,6 +41,12 @@ describe("task dashboard", () => {
     const approved = await fetch(`${base}/api/approvals/${pending.approvalId}/approve`, { method: "POST", headers });
     expect(approved.status).toBe(200);
     expect(services.safetyPolicy.list().find((item) => item.approvalId === pending.approvalId)?.approvedAt).toBeTruthy();
+    const deniedPending = services.safetyPolicy.request("exec_command", "sudo echo denied", "sudo echo denied");
+    const denied = await fetch(`${base}/api/approvals/${deniedPending.approvalId}/deny`, { method: "POST", headers });
+    expect(denied.status).toBe(200);
+    expect(services.safetyPolicy.list().some((item) => item.approvalId === deniedPending.approvalId)).toBe(false);
+    const stalePending = services.safetyPolicy.request("exec_command", "sudo echo stale", "sudo echo stale");
+    services.safetyPolicy.approve(stalePending.approvalId);
     const policyResponse = await (await fetch(`${base}/api/policy`, { headers })).json() as { editable: boolean; policy: { version: number } };
     expect(policyResponse.editable).toBe(true);
     expect(policyResponse.policy.version).toBe(1);
@@ -49,6 +55,8 @@ describe("task dashboard", () => {
     const updatedPolicy = { version: 1, commands: [{ id: "deny-danger", pattern: "danger", decision: "deny" }] };
     const saved = await fetch(`${base}/api/policy`, { method: "PUT", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(updatedPolicy) });
     expect(saved.status).toBe(200);
+    expect(services.safetyPolicy.list()).toEqual([]);
+    expect(() => services.safetyPolicy.consume(stalePending.approvalId, "exec_command", "sudo echo stale")).toThrow("Unknown or expired approval");
     expect(services.safetyPolicy.assessCommand("danger").decision).toBe("deny");
     expect(JSON.parse(await readFile(policyFile, "utf8"))).toMatchObject(updatedPolicy);
     await writeFile(policyFile, JSON.stringify({ version: 1, commands: [{ id: "allow-danger", pattern: "danger", decision: "allow" }] }));
