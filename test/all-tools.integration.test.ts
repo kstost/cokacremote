@@ -20,6 +20,7 @@ const ALL_TOOLS = [
   "download_file",
   "exec_command",
   "get_task",
+  "get_task_events",
   "hash_file",
   "list_directory",
   "list_processes",
@@ -177,6 +178,17 @@ describe.sequential("all registered MCP tools", () => {
     expect(task).toMatchObject({ taskId, title: "E2E task", status: "active" });
     expect(task.commands).toEqual(expect.arrayContaining([expect.objectContaining({ command: "printf task-command", exitCode: 0 })]));
     expect(task.filesChanged).toEqual(expect.arrayContaining([path.join(testRoot, "task-file.txt")]));
+    const timeline = await callOk("get_task_events", { taskId });
+    const events = timeline.events as Array<Record<string, unknown>>;
+    expect(events.map((event) => event.event)).toEqual(expect.arrayContaining([
+      "task.started", "tool.started", "process.started", "process.completed", "tool.completed", "file.changed",
+    ]));
+    expect(events.map((event) => Number(event.seq))).toEqual([...events.map((event) => Number(event.seq))].sort((a, b) => a - b));
+    expect(events.find((event) => event.event === "tool.completed" && event.toolName === "exec_command")?.durationMs).toEqual(expect.any(Number));
+    const cursor = Number(events.at(-1)?.seq ?? 0);
+    const incremental = await callOk("get_task_events", { taskId, afterSeq: cursor });
+    expect(incremental.events).toEqual([]);
+    expect(incremental.nextSeq).toBe(cursor);
     const listed = await callOk("list_tasks", { limit: 10 });
     expect(listed.tasks).toEqual(expect.arrayContaining([expect.objectContaining({ taskId })]));
     const completed = await callOk("complete_task", { taskId, summary: "done" });

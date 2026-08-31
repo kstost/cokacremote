@@ -7,6 +7,7 @@ import { ProcessManager } from "./process-manager.js";
 import { runScript } from "./script-runner.js";
 import { runTool } from "./tool-result.js";
 import { TaskJournal } from "./task-journal.js";
+import { traceTaskTool } from "./task-tracing.js";
 
 const fullAccessAnnotations = {
   readOnlyHint: false,
@@ -92,8 +93,7 @@ export function registerExecTools(
       taskId,
       maxOutputBytes,
     }) =>
-      runTool(async () => {
-        if (taskId && !(await taskJournal.getTask(taskId))) throw new Error(`Unknown task: ${taskId}`);
+      runTool(() => traceTaskTool(taskJournal, taskId, "exec_command", async () => {
         const cwd = fileService.resolve(".", workdir);
         const executable = shell || config.defaultShell;
         const sessionId = processManager.start({
@@ -111,7 +111,7 @@ export function registerExecTools(
           maxOutputBytes,
         });
         return processResult(result);
-      }),
+      })),
   );
 
   server.registerTool(
@@ -182,8 +182,7 @@ export function registerExecTools(
       maxOutputBytes,
       keepScript,
     }) =>
-      runTool(async () => {
-        if (taskId && !(await taskJournal.getTask(taskId))) throw new Error(`Unknown task: ${taskId}`);
+      runTool(() => traceTaskTool(taskJournal, taskId, "run_script", async () => {
         const result = await runScript(processManager, {
           runtime,
           script,
@@ -200,7 +199,7 @@ export function registerExecTools(
           taskId,
         });
         return processResult(result);
-      }),
+      })),
   );
 
   server.registerTool(

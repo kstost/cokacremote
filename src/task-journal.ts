@@ -3,6 +3,7 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 export interface TaskEvent {
+  seq: number;
   timestamp: string;
   event: string;
   taskId?: string;
@@ -24,6 +25,7 @@ export interface TaskSummary {
 export class TaskJournal {
   readonly #file: string | undefined;
   readonly #memory: TaskEvent[] = [];
+  #nextSeq = 1;
 
   constructor(file?: string) {
     this.#file = file;
@@ -42,11 +44,19 @@ export class TaskJournal {
   }
 
   async record(event: string, data: Record<string, unknown> = {}): Promise<void> {
-    const entry: TaskEvent = { timestamp: new Date().toISOString(), event, ...data };
+    const entry: TaskEvent = { seq: this.#nextSeq++, timestamp: new Date().toISOString(), event, ...data };
     this.#memory.push(entry);
     if (!this.#file) return;
     await mkdir(path.dirname(this.#file), { recursive: true });
     await appendFile(this.#file, `${JSON.stringify(entry)}\n`, { encoding: "utf8", mode: 0o600 });
+  }
+
+  async getTaskEvents(taskId: string, afterSeq = 0, limit = 200): Promise<TaskEvent[]> {
+    if (!(await this.getTask(taskId))) throw new Error(`Unknown task: ${taskId}`);
+    return (await this.#events())
+      .filter((entry) => entry.taskId === taskId && entry.seq > afterSeq)
+      .sort((a, b) => a.seq - b.seq)
+      .slice(0, limit);
   }
 
   async getTask(taskId: string): Promise<TaskSummary | undefined> {
@@ -64,9 +74,16 @@ export class TaskJournal {
     let persisted: TaskEvent[] = [];
     try {
       const text = await readFile(this.#file, "utf8");
+      let fallbackSeq = 1;
       persisted = text.split("\n").filter(Boolean).flatMap((line) => {
-        try { return [JSON.parse(line) as TaskEvent]; } catch { return []; }
+        try {
+          const parsed = JSON.parse(line) as Partial<TaskEvent>;
+          const seq = typeof parsed.seq === "number" ? parsed.seq : fallbackSeq;
+          fallbackSeq = Math.max(fallbackSeq + 1, seq + 1);
+          return [{ ...parsed, seq } as TaskEvent];
+        } catch { return []; }
       });
+      this.#nextSeq = Math.max(this.#nextSeq, fallbackSeq);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }

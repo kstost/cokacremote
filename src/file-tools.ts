@@ -5,6 +5,7 @@ import type { AppConfig } from "./config.js";
 import { FileService } from "./file-service.js";
 import { runTool } from "./tool-result.js";
 import { TaskJournal } from "./task-journal.js";
+import { traceTaskTool } from "./task-tracing.js";
 
 const readAnnotations = {
   readOnlyHint: true,
@@ -134,12 +135,11 @@ export function registerFileTools(
       annotations: writeAnnotations,
     },
     async ({ path, cwd, content, encoding, mode, createParents, fileMode, taskId }) =>
-      runTool(async () => {
-        if (taskId && !(await journal.getTask(taskId))) throw new Error(`Unknown task: ${taskId}`);
+      runTool(() => traceTaskTool(journal, taskId, "write_file", async () => {
         const result = await files.writeFileContent(path, cwd, content, encoding, mode, createParents, parseMode(fileMode));
         if (taskId) await journal.record("file.changed", { taskId, path: files.resolve(path, cwd), operation: "write_file" });
         return result;
-      }),
+      })),
   );
 
   server.registerTool(
@@ -160,12 +160,11 @@ export function registerFileTools(
       annotations: writeAnnotations,
     },
     async ({ path, cwd, oldText, newText, replaceAll, expectedOccurrences, taskId }) =>
-      runTool(async () => {
-        if (taskId && !(await journal.getTask(taskId))) throw new Error(`Unknown task: ${taskId}`);
+      runTool(() => traceTaskTool(journal, taskId, "replace_in_file", async () => {
         const result = await files.replaceInFile(path, cwd, oldText, newText, replaceAll, expectedOccurrences);
         if (taskId) await journal.record("file.changed", { taskId, path: files.resolve(path, cwd), operation: "replace_in_file" });
         return result;
-      }),
+      })),
   );
 
   server.registerTool(
@@ -185,15 +184,14 @@ export function registerFileTools(
       annotations: writeAnnotations,
     },
     async ({ patch, cwd, checkOnly, reverse, threeWay, taskId }) =>
-      runTool(async () => {
-        if (taskId && !(await journal.getTask(taskId))) throw new Error(`Unknown task: ${taskId}`);
+      runTool(() => traceTaskTool(journal, taskId, "apply_patch", async () => {
         const result = await files.applyPatch(patch, cwd, { checkOnly, reverse, threeWay });
         if (taskId && !checkOnly) {
           const names = [...patch.matchAll(/^\+\+\+\s+(?:b\/)?(.+)$/gm)].map((match) => match[1]!).filter((name) => name !== "/dev/null");
           for (const name of new Set(names)) await journal.record("file.changed", { taskId, path: files.resolve(name, cwd), operation: "apply_patch" });
         }
         return result;
-      }),
+      })),
   );
 
   server.registerTool(
@@ -214,12 +212,11 @@ export function registerFileTools(
       annotations: writeAnnotations,
     },
     async ({ path, cwd, dataBase64, offset, truncate, createParents, taskId }) =>
-      runTool(async () => {
-        if (taskId && !(await journal.getTask(taskId))) throw new Error(`Unknown task: ${taskId}`);
+      runTool(() => traceTaskTool(journal, taskId, "upload_file", async () => {
         const result = await files.uploadChunk(path, cwd, dataBase64, offset, truncate, createParents);
         if (taskId) await journal.record("file.changed", { taskId, path: files.resolve(path, cwd), operation: "upload_file" });
         return result;
-      }),
+      })),
   );
 
   server.registerTool(

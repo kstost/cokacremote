@@ -23,6 +23,20 @@ export function registerTaskTools(server: McpServer, journal: TaskJournal): void
     return { ...task };
   }));
 
+  server.registerTool("get_task_events", {
+    title: "Get task event timeline",
+    description: "Return ordered tracing events for a development task. Use afterSeq for incremental polling.",
+    inputSchema: {
+      taskId: z.string().uuid(),
+      afterSeq: z.number().int().min(0).default(0),
+      limit: z.number().int().min(1).max(1000).default(200),
+    },
+    annotations: readAnnotations,
+  }, async ({ taskId, afterSeq, limit }) => runTool(async () => {
+    const events = await journal.getTaskEvents(taskId, afterSeq, limit);
+    return { events, nextSeq: events.at(-1)?.seq ?? afterSeq };
+  }));
+
   server.registerTool("list_tasks", {
     title: "List development tasks",
     description: "List recent task journals.",
