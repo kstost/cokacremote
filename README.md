@@ -157,6 +157,17 @@ npm run doctor
 
 The doctor checks Node.js, Git, the configured shell, npm, Python, workspace read/write access, and the configured task-journal location.
 
+### Development task journal
+
+When `MCP_TASK_JOURNAL_FILE` is configured, related MCP calls can be grouped into a durable development task:
+
+1. Call `start_task` and keep the returned `taskId`.
+2. Pass `taskId` to `exec_command`, `run_script`, `write_file`, `replace_in_file`, `apply_patch`, or `upload_file`.
+3. Use `get_task` or `list_tasks` to review commands and changed files.
+4. Call `complete_task` when the work is finished.
+
+Calls without `taskId` remain fully backward compatible. The journal stores command metadata and changed paths, not stdout/stderr or file contents.
+
 ## Local development
 
 The Quick Start above is enough to run a normal local instance. If you are changing the source code itself, development mode automatically watches the TypeScript entry point:

@@ -15,12 +15,15 @@ import { createServices } from "../src/mcp-server.js";
 const ALL_TOOLS = [
   "apply_patch",
   "chmod_path",
+  "complete_task",
   "copy_path",
   "download_file",
   "exec_command",
+  "get_task",
   "hash_file",
   "list_directory",
   "list_processes",
+  "list_tasks",
   "make_directory",
   "move_path",
   "read_file",
@@ -28,6 +31,7 @@ const ALL_TOOLS = [
   "remove_path",
   "replace_in_file",
   "run_script",
+  "start_task",
   "stat_path",
   "terminate_process",
   "upload_file",
@@ -117,6 +121,7 @@ describe.sequential("all registered MCP tools", () => {
           MCP_HOST: "127.0.0.1",
           MCP_DEFAULT_CWD: localDirectory,
           MCP_MAX_FILE_CHUNK_BYTES: "65536",
+          MCP_TASK_JOURNAL_FILE: path.join(localDirectory, "task-journal.jsonl"),
         },
         localDirectory,
       );
@@ -161,6 +166,21 @@ describe.sequential("all registered MCP tools", () => {
       expect(tool.inputSchema.type).toBe("object");
       expect(tool.annotations).toBeDefined();
     }
+  });
+
+  it("groups commands and file changes in a development task", async () => {
+    const started = await callOk("start_task", { title: "E2E task", cwd: testRoot });
+    const taskId = String(started.taskId);
+    await callOk("exec_command", { cmd: "printf task-command", workdir: testRoot, taskId, yieldTimeMs: 3000 });
+    await callOk("write_file", { path: "task-file.txt", cwd: testRoot, content: "tracked", taskId });
+    const task = await callOk("get_task", { taskId });
+    expect(task).toMatchObject({ taskId, title: "E2E task", status: "active" });
+    expect(task.commands).toEqual(expect.arrayContaining([expect.objectContaining({ command: "printf task-command", exitCode: 0 })]));
+    expect(task.filesChanged).toEqual(expect.arrayContaining([path.join(testRoot, "task-file.txt")]));
+    const listed = await callOk("list_tasks", { limit: 10 });
+    expect(listed.tasks).toEqual(expect.arrayContaining([expect.objectContaining({ taskId })]));
+    const completed = await callOk("complete_task", { taskId, summary: "done" });
+    expect(completed).toMatchObject({ taskId, status: "completed" });
   });
 
   it("executes, polls, writes to, times out, lists, and terminates processes", async () => {

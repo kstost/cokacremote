@@ -20,6 +20,7 @@ export interface RunScriptRequest {
   maxOutputBytes?: number | undefined;
   stdin?: string | undefined;
   keepScript?: boolean | undefined;
+  taskId?: string | undefined;
 }
 
 export interface RunScriptResult extends ProcessReadResult {
@@ -90,6 +91,7 @@ export async function runScript(
       timeoutMs: request.timeoutMs,
       stdin: request.stdin,
       cleanup,
+      taskId: request.taskId,
     });
   } catch (error) {
     await rm(temporaryDirectory, { recursive: true, force: true });

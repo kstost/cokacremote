@@ -6,6 +6,7 @@ import { FileService } from "./file-service.js";
 import { ProcessManager } from "./process-manager.js";
 import { runScript } from "./script-runner.js";
 import { runTool } from "./tool-result.js";
+import { TaskJournal } from "./task-journal.js";
 
 const fullAccessAnnotations = {
   readOnlyHint: false,
@@ -26,6 +27,7 @@ export function registerExecTools(
   config: AppConfig,
   processManager: ProcessManager,
   fileService: FileService,
+  taskJournal: TaskJournal,
 ): void {
   const environmentSchema = z
     .record(z.string(), z.string())
@@ -67,6 +69,7 @@ export function registerExecTools(
           .max(30_000)
           .default(10_000)
           .describe("How long to wait for output before returning a running session."),
+        taskId: z.string().uuid().optional().describe("Optional development task journal ID."),
         maxOutputBytes: z
           .number()
           .int()
@@ -86,9 +89,11 @@ export function registerExecTools(
       stdin,
       timeoutMs,
       yieldTimeMs,
+      taskId,
       maxOutputBytes,
     }) =>
       runTool(async () => {
+        if (taskId && !(await taskJournal.getTask(taskId))) throw new Error(`Unknown task: ${taskId}`);
         const cwd = fileService.resolve(".", workdir);
         const executable = shell || config.defaultShell;
         const sessionId = processManager.start({
@@ -99,6 +104,7 @@ export function registerExecTools(
           env,
           timeoutMs,
           stdin,
+          taskId,
         });
         await processManager.waitForExit(sessionId, yieldTimeMs);
         const result = await processManager.read(sessionId, {
@@ -147,6 +153,7 @@ export function registerExecTools(
           .min(0)
           .max(30_000)
           .default(10_000),
+        taskId: z.string().uuid().optional().describe("Optional development task journal ID."),
         maxOutputBytes: z
           .number()
           .int()
@@ -171,10 +178,12 @@ export function registerExecTools(
       stdin,
       timeoutMs,
       yieldTimeMs,
+      taskId,
       maxOutputBytes,
       keepScript,
     }) =>
       runTool(async () => {
+        if (taskId && !(await taskJournal.getTask(taskId))) throw new Error(`Unknown task: ${taskId}`);
         const result = await runScript(processManager, {
           runtime,
           script,
@@ -188,6 +197,7 @@ export function registerExecTools(
           yieldTimeMs,
           maxOutputBytes,
           keepScript,
+          taskId,
         });
         return processResult(result);
       }),

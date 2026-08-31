@@ -38,6 +38,7 @@ interface ManagedProcess {
   timeoutHandle: NodeJS.Timeout | undefined;
   idleTimeoutHandle: NodeJS.Timeout | undefined;
   cleanup: (() => Promise<void>) | undefined;
+  taskId: string | undefined;
 }
 
 function isContinuationByte(value: number): boolean {
@@ -142,6 +143,7 @@ export interface StartProcessRequest {
   timeoutMs?: number | undefined;
   stdin?: string | undefined;
   cleanup?: (() => Promise<void>) | undefined;
+  taskId?: string | undefined;
 }
 
 export interface ReadProcessRequest {
@@ -152,6 +154,7 @@ export interface ReadProcessRequest {
 
 export interface ProcessReadResult {
   sessionId: string;
+  taskId: string | undefined;
   command: string;
   cwd: string;
   running: boolean;
@@ -224,6 +227,7 @@ export class ProcessManager {
       timeoutHandle: undefined,
       idleTimeoutHandle: undefined,
       cleanup: request.cleanup,
+      taskId: request.taskId,
     };
     this.#processes.set(sessionId, managed);
 
@@ -319,6 +323,7 @@ export class ProcessManager {
 
     return {
       sessionId,
+      taskId: managed.taskId,
       command: managed.command,
       cwd: managed.cwd,
       running: this.#isRunning(managed),
@@ -421,6 +426,7 @@ export class ProcessManager {
 
   list(): Array<{
     sessionId: string;
+    taskId: string | undefined;
     pid: number | undefined;
     command: string;
     cwd: string;
@@ -432,6 +438,7 @@ export class ProcessManager {
     this.prune();
     return [...this.#processes.values()].map((managed) => ({
       sessionId: managed.sessionId,
+      taskId: managed.taskId,
       pid: managed.child.pid,
       command: managed.command,
       cwd: managed.cwd,
@@ -614,7 +621,7 @@ export class ProcessManager {
   #journal(event: string, managed: ManagedProcess): void {
     const file = this.#options.taskJournalFile;
     if (!file) return;
-    const line = JSON.stringify({ timestamp: new Date().toISOString(), event, sessionId: managed.sessionId, command: managed.command, cwd: managed.cwd, pid: managed.child.pid, exitCode: managed.exitCode, signal: managed.signal, timedOut: managed.timedOut, error: managed.error, totalOutputBytes: managed.totalOutputBytes }) + "\n";
+    const line = JSON.stringify({ taskId: managed.taskId, timestamp: new Date().toISOString(), event, sessionId: managed.sessionId, command: managed.command, cwd: managed.cwd, pid: managed.child.pid, exitCode: managed.exitCode, signal: managed.signal, timedOut: managed.timedOut, error: managed.error, totalOutputBytes: managed.totalOutputBytes }) + "\n";
     void mkdir(path.dirname(file), { recursive: true }).then(() => appendFile(file, line, { encoding: "utf8", mode: 0o600 })).catch((error) => { managed.error ??= `Journal write failed: ${errorMessage(error)}`; });
   }
 

@@ -5,13 +5,17 @@ import { registerExecTools } from "./exec-tools.js";
 import { FileService } from "./file-service.js";
 import { registerFileTools } from "./file-tools.js";
 import { ProcessManager } from "./process-manager.js";
+import { TaskJournal } from "./task-journal.js";
+import { registerTaskTools } from "./task-tools.js";
 
 export interface McpServices {
   processManager: ProcessManager;
   fileService: FileService;
+  taskJournal: TaskJournal;
 }
 
 export function createServices(config: AppConfig): McpServices {
+  const taskJournal = new TaskJournal(config.taskJournalFile);
   return {
     processManager: new ProcessManager({
       maxRetainedOutputBytes: config.maxRetainedProcessOutputBytes,
@@ -22,6 +26,7 @@ export function createServices(config: AppConfig): McpServices {
       processMaxRuntimeMs: config.processMaxRuntimeMs,
       taskJournalFile: config.taskJournalFile,
     }),
+    taskJournal,
     fileService: new FileService({
       defaultCwd: config.defaultCwd,
       maxChunkBytes: config.maxFileChunkBytes,
@@ -50,7 +55,9 @@ export function createMcpServer(config: AppConfig, services: McpServices): McpSe
     config,
     services.processManager,
     services.fileService,
+    services.taskJournal,
   );
-  registerFileTools(server, config, services.fileService);
+  registerFileTools(server, config, services.fileService, services.taskJournal);
+  registerTaskTools(server, services.taskJournal);
   return server;
 }

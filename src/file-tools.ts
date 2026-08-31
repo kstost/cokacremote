@@ -4,6 +4,7 @@ import * as z from "zod/v4";
 import type { AppConfig } from "./config.js";
 import { FileService } from "./file-service.js";
 import { runTool } from "./tool-result.js";
+import { TaskJournal } from "./task-journal.js";
 
 const readAnnotations = {
   readOnlyHint: true,
@@ -29,6 +30,8 @@ const pathSchema = z
   .min(1)
   .describe("Absolute path, ~/ path, or a path relative to cwd/default cwd.");
 
+const taskIdSchema = z.string().uuid().optional().describe("Optional development task journal ID.");
+
 const fileModeSchema = z
   .string()
   .regex(/^(?:0o)?[0-7]{3,4}$/)
@@ -46,6 +49,7 @@ export function registerFileTools(
   server: McpServer,
   config: AppConfig,
   files: FileService,
+  journal: TaskJournal,
 ): void {
   server.registerTool(
     "list_directory",
@@ -125,21 +129,17 @@ export function registerFileTools(
         mode: z.enum(["overwrite", "append"]).default("overwrite"),
         createParents: z.boolean().default(true),
         fileMode: fileModeSchema,
+        taskId: taskIdSchema,
       },
       annotations: writeAnnotations,
     },
-    async ({ path, cwd, content, encoding, mode, createParents, fileMode }) =>
-      runTool(() =>
-        files.writeFileContent(
-          path,
-          cwd,
-          content,
-          encoding,
-          mode,
-          createParents,
-          parseMode(fileMode),
-        ),
-      ),
+    async ({ path, cwd, content, encoding, mode, createParents, fileMode, taskId }) =>
+      runTool(async () => {
+        if (taskId && !(await journal.getTask(taskId))) throw new Error(`Unknown task: ${taskId}`);
+        const result = await files.writeFileContent(path, cwd, content, encoding, mode, createParents, parseMode(fileMode));
+        if (taskId) await journal.record("file.changed", { taskId, path: files.resolve(path, cwd), operation: "write_file" });
+        return result;
+      }),
   );
 
   server.registerTool(
@@ -155,20 +155,17 @@ export function registerFileTools(
         newText: z.string(),
         replaceAll: z.boolean().default(false),
         expectedOccurrences: z.number().int().min(0).optional(),
+        taskId: taskIdSchema,
       },
       annotations: writeAnnotations,
     },
-    async ({ path, cwd, oldText, newText, replaceAll, expectedOccurrences }) =>
-      runTool(() =>
-        files.replaceInFile(
-          path,
-          cwd,
-          oldText,
-          newText,
-          replaceAll,
-          expectedOccurrences,
-        ),
-      ),
+    async ({ path, cwd, oldText, newText, replaceAll, expectedOccurrences, taskId }) =>
+      runTool(async () => {
+        if (taskId && !(await journal.getTask(taskId))) throw new Error(`Unknown task: ${taskId}`);
+        const result = await files.replaceInFile(path, cwd, oldText, newText, replaceAll, expectedOccurrences);
+        if (taskId) await journal.record("file.changed", { taskId, path: files.resolve(path, cwd), operation: "replace_in_file" });
+        return result;
+      }),
   );
 
   server.registerTool(
@@ -183,11 +180,20 @@ export function registerFileTools(
         checkOnly: z.boolean().default(false),
         reverse: z.boolean().default(false),
         threeWay: z.boolean().default(false),
+        taskId: taskIdSchema,
       },
       annotations: writeAnnotations,
     },
-    async ({ patch, cwd, checkOnly, reverse, threeWay }) =>
-      runTool(() => files.applyPatch(patch, cwd, { checkOnly, reverse, threeWay })),
+    async ({ patch, cwd, checkOnly, reverse, threeWay, taskId }) =>
+      runTool(async () => {
+        if (taskId && !(await journal.getTask(taskId))) throw new Error(`Unknown task: ${taskId}`);
+        const result = await files.applyPatch(patch, cwd, { checkOnly, reverse, threeWay });
+        if (taskId && !checkOnly) {
+          const names = [...patch.matchAll(/^\+\+\+\s+(?:b\/)?(.+)$/gm)].map((match) => match[1]!).filter((name) => name !== "/dev/null");
+          for (const name of new Set(names)) await journal.record("file.changed", { taskId, path: files.resolve(name, cwd), operation: "apply_patch" });
+        }
+        return result;
+      }),
   );
 
   server.registerTool(
@@ -203,13 +209,17 @@ export function registerFileTools(
         offset: z.number().int().min(0).default(0),
         truncate: z.boolean().default(false),
         createParents: z.boolean().default(true),
+        taskId: taskIdSchema,
       },
       annotations: writeAnnotations,
     },
-    async ({ path, cwd, dataBase64, offset, truncate, createParents }) =>
-      runTool(() =>
-        files.uploadChunk(path, cwd, dataBase64, offset, truncate, createParents),
-      ),
+    async ({ path, cwd, dataBase64, offset, truncate, createParents, taskId }) =>
+      runTool(async () => {
+        if (taskId && !(await journal.getTask(taskId))) throw new Error(`Unknown task: ${taskId}`);
+        const result = await files.uploadChunk(path, cwd, dataBase64, offset, truncate, createParents);
+        if (taskId) await journal.record("file.changed", { taskId, path: files.resolve(path, cwd), operation: "upload_file" });
+        return result;
+      }),
   );
 
   server.registerTool(
