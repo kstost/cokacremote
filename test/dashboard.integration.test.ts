@@ -39,6 +39,9 @@ describe("task dashboard", () => {
     const appJs = await appJsResponse.text();
     expect(appJs).toContain("currentTab='overview'");
     expect(appJs).toContain('Raw events');
+    expect(appJs).toContain('완료 · 중간 오류');
+    expect(appJs).toContain('최종 실패');
+    expect(appJs).toContain('정상 완료');
     expect(() => new Function(appJs)).not.toThrow();
     const tasks = await (await fetch(`${base}/api/tasks`, { headers })).json() as { tasks: Array<{ taskId: string }> };
     expect(tasks.tasks.some((item) => item.taskId === task.taskId)).toBe(true);

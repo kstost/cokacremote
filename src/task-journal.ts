@@ -23,6 +23,10 @@ export interface TaskSummary {
   commands: Array<{ sessionId?: string; command: string; cwd?: string; exitCode?: number | null; timedOut?: boolean }>;
   filesChanged: string[];
   eventCount: number;
+  failedCommandCount: number;
+  lastCommandStatus?: "running" | "success" | "failed";
+  toolFailureCount: number;
+  lastToolStatus?: "success" | "failed";
   automatic?: boolean;
 }
 
@@ -44,13 +48,22 @@ function appendProcessEvent(task: TaskSummary, entry: TaskEvent): void {
       command: typeof entry.command === "string" ? entry.command : "",
       cwd: typeof entry.cwd === "string" ? entry.cwd : undefined,
     });
+    task.lastCommandStatus = "running";
   } else if (entry.event === "process.completed") {
     const sessionId = typeof entry.sessionId === "string" ? entry.sessionId : undefined;
     const command = [...task.commands].reverse().find((item) => item.sessionId === sessionId);
+    const failed = entry.timedOut === true || Boolean(entry.error) || Boolean(entry.signal) || entry.exitCode === null || (typeof entry.exitCode === "number" && entry.exitCode !== 0);
+    task.lastCommandStatus = failed ? "failed" : "success";
+    if (failed) task.failedCommandCount += 1;
     if (command) {
       command.exitCode = typeof entry.exitCode === "number" || entry.exitCode === null ? entry.exitCode : undefined;
       command.timedOut = entry.timedOut === true;
     }
+  } else if (entry.event === "tool.failed") {
+    task.toolFailureCount += 1;
+    task.lastToolStatus = "failed";
+  } else if (entry.event === "tool.completed") {
+    task.lastToolStatus = "success";
   } else if (entry.event === "file.changed" && typeof entry.path === "string") {
     if (!task.filesChanged.includes(entry.path)) task.filesChanged.push(entry.path);
   }
@@ -183,6 +196,8 @@ export class TaskJournal {
           commands: [],
           filesChanged: [],
           eventCount: 1,
+          failedCommandCount: 0,
+          toolFailureCount: 0,
         });
         continue;
       }
@@ -216,6 +231,8 @@ export class TaskJournal {
           commands: [],
           filesChanged: [],
           eventCount: 0,
+          failedCommandCount: 0,
+          toolFailureCount: 0,
           automatic: true,
         });
         eventsByTask.set(currentId, []);

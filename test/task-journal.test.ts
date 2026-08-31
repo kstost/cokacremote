@@ -22,6 +22,45 @@ describe("TaskJournal automatic sessions", () => {
     ]);
   });
 
+  it("distinguishes recovered intermediate failures from final failures", async () => {
+    const recovered = new TaskJournal();
+    await recovered.record("process.started", { sessionId: "bad", command: "false", cwd: "/workspace/app" });
+    await recovered.record("process.completed", { sessionId: "bad", command: "false", cwd: "/workspace/app", exitCode: 1 });
+    await recovered.record("process.started", { sessionId: "good", command: "npm test", cwd: "/workspace/app" });
+    await recovered.record("process.completed", { sessionId: "good", command: "npm test", cwd: "/workspace/app", exitCode: 0 });
+    const recoveredTask = (await recovered.listTasks())[0]!;
+    expect(recoveredTask).toMatchObject({
+      status: "completed",
+      failedCommandCount: 1,
+      lastCommandStatus: "success",
+    });
+
+    const failed = new TaskJournal();
+    await failed.record("process.started", { sessionId: "good", command: "npm test", cwd: "/workspace/app" });
+    await failed.record("process.completed", { sessionId: "good", command: "npm test", cwd: "/workspace/app", exitCode: 0 });
+    await failed.record("process.started", { sessionId: "bad", command: "npm run broken", cwd: "/workspace/app" });
+    await failed.record("process.completed", { sessionId: "bad", command: "npm run broken", cwd: "/workspace/app", exitCode: 2 });
+    const failedTask = (await failed.listTasks())[0]!;
+    expect(failedTask).toMatchObject({
+      status: "completed",
+      failedCommandCount: 1,
+      lastCommandStatus: "failed",
+    });
+  });
+
+  it("tracks tool-only recovery for explicit tasks", async () => {
+    const journal = new TaskJournal();
+    const task = await journal.startTask("File edits", "/workspace/app");
+    await journal.record("tool.failed", { taskId: task.taskId, toolName: "write_file", error: "first attempt failed" });
+    await journal.record("tool.completed", { taskId: task.taskId, toolName: "write_file", durationMs: 1 });
+    await journal.completeTask(task.taskId);
+    expect(await journal.getTask(task.taskId)).toMatchObject({
+      status: "completed",
+      toolFailureCount: 1,
+      lastToolStatus: "success",
+    });
+  });
+
   it("keeps explicit tasks separate from automatic sessions", async () => {
     const journal = new TaskJournal();
     const explicit = await journal.startTask("Explicit task", "/workspace/app");
