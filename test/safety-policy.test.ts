@@ -74,4 +74,20 @@ describe("SafetyPolicy file", () => {
     expect(() => parseSafetyPolicyFile({ version: 1, commands: [{ id: "bad", pattern: "[", decision: "allow" }] })).toThrow("pattern is invalid");
     expect(() => parseSafetyPolicyFile({ version: 1, defaults: { outsideWorkspace: "maybe" } })).toThrow("allow, approval-required, or deny");
   });
+
+  it("invalidates all pending approvals when policy reloads", () => {
+    const policy = new SafetyPolicy("safe", "/workspace/app");
+    const pending = policy.request("exec_command", "sudo echo ok", "sudo echo ok");
+    policy.approve(pending.approvalId);
+    policy.reload({ version: 1 });
+    expect(policy.list()).toEqual([]);
+    expect(() => policy.consume(pending.approvalId, "exec_command", "sudo echo ok")).toThrow("Unknown or expired approval");
+  });
+
+  it("can explicitly deny a pending approval", () => {
+    const policy = new SafetyPolicy("safe", "/workspace/app");
+    const pending = policy.request("exec_command", "sudo echo ok", "sudo echo ok");
+    expect(policy.deny(pending.approvalId).approvalId).toBe(pending.approvalId);
+    expect(policy.list()).toEqual([]);
+  });
 });

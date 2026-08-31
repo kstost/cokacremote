@@ -68,6 +68,19 @@ export class SafetyPolicy {
 
   reload(policyFile: SafetyPolicyFile | undefined): void {
     this.#policyFile = policyFile ? structuredClone(policyFile) : undefined;
+    this.invalidateApprovals();
+  }
+
+  invalidateApprovals(): number {
+    const count = this.#approvals.size;
+    this.#approvals.clear();
+    return count;
+  }
+
+  deny(approvalId: string): PendingApproval {
+    const approval = this.#require(approvalId);
+    this.#approvals.delete(approvalId);
+    return { ...approval };
   }
 
   assessCommand(command: string): SafetyAssessment {

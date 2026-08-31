@@ -132,6 +132,33 @@ describe("ProcessManager", () => {
     expect(first.output + second.output).toBe(expected);
     expect(first.output + second.output).not.toContain("�");
   });
+
+  it("records process events through the shared journal without affecting process results on journal failure", async () => {
+    const events: Array<{ event: string; data?: Record<string, unknown> }> = [];
+    manager = new ProcessManager({
+      maxRetainedOutputBytes: 1024 * 1024,
+      processRetentionMs: 60_000,
+      maxProcesses: 16,
+      defaultMaxOutputBytes: 1024 * 1024,
+      journal: { record: async (event, data) => { events.push({ event, data }); } },
+    });
+    const sessionId = manager.start({ executable: "/bin/bash", args: ["-c", "true"], commandForDisplay: "safe command", cwd: process.cwd(), taskId: "task-1" });
+    await manager.waitForExit(sessionId, 2000);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(events.map((item) => item.event)).toEqual(expect.arrayContaining(["process.started", "process.completed"]));
+    expect(events[0]?.data).toMatchObject({ taskId: "task-1", command: "safe command" });
+
+    const failing = new ProcessManager({
+      maxRetainedOutputBytes: 1024 * 1024, processRetentionMs: 60_000, maxProcesses: 16, defaultMaxOutputBytes: 1024 * 1024,
+      journal: { record: async () => { throw new Error("journal unavailable"); } },
+    });
+    try {
+      const id = failing.start({ executable: "/bin/bash", args: ["-c", "true"], commandForDisplay: "still succeeds", cwd: process.cwd() });
+      await failing.waitForExit(id, 2000);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect((await failing.read(id)).error).toBeUndefined();
+    } finally { await failing.shutdown(); }
+  });
 });
 
 describe("ProcessManager lifecycle controls", () => {

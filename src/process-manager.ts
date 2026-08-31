@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { isAscii } from "node:buffer";
-import { appendFile, mkdir } from "node:fs/promises";
-import path from "node:path";
-
 import { errorMessage } from "./errors.js";
 
 const OUTPUT_CHUNK_BYTES = 16 * 1024;
@@ -182,7 +179,7 @@ export interface ProcessManagerOptions {
   defaultMaxOutputBytes: number;
   processIdleTimeoutMs?: number;
   processMaxRuntimeMs?: number;
-  taskJournalFile?: string;
+  journal?: { record(event: string, data?: Record<string, unknown>): Promise<void> };
 }
 
 export class ProcessManager {
@@ -619,10 +616,9 @@ export class ProcessManager {
   }
 
   #journal(event: string, managed: ManagedProcess): void {
-    const file = this.#options.taskJournalFile;
-    if (!file) return;
-    const line = JSON.stringify({ taskId: managed.taskId, timestamp: new Date().toISOString(), event, sessionId: managed.sessionId, command: managed.command, cwd: managed.cwd, pid: managed.child.pid, exitCode: managed.exitCode, signal: managed.signal, timedOut: managed.timedOut, error: managed.error, totalOutputBytes: managed.totalOutputBytes }) + "\n";
-    void mkdir(path.dirname(file), { recursive: true }).then(() => appendFile(file, line, { encoding: "utf8", mode: 0o600 })).catch((error) => { managed.error ??= `Journal write failed: ${errorMessage(error)}`; });
+    const journal = this.#options.journal;
+    if (!journal) return;
+    void journal.record(event, { taskId: managed.taskId, sessionId: managed.sessionId, command: managed.command, cwd: managed.cwd, pid: managed.child.pid, exitCode: managed.exitCode, signal: managed.signal, timedOut: managed.timedOut, error: managed.error, totalOutputBytes: managed.totalOutputBytes }).catch(() => undefined);
   }
 
   #notify(managed: ManagedProcess): void {

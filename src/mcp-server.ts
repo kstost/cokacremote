@@ -27,7 +27,7 @@ export function createServices(config: AppConfig): McpServices {
       defaultMaxOutputBytes: config.maxOutputBytes,
       processIdleTimeoutMs: config.processIdleTimeoutMs,
       processMaxRuntimeMs: config.processMaxRuntimeMs,
-      taskJournalFile: config.taskJournalFile,
+      journal: taskJournal,
     }),
     taskJournal,
     safetyPolicy: new SafetyPolicy(config.safetyMode, config.defaultCwd, loadSafetyPolicyFile(config.safetyPolicyFile)),
