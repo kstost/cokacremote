@@ -8,6 +8,7 @@ import { ProcessManager } from "./process-manager.js";
 import { TaskJournal } from "./task-journal.js";
 import { registerTaskTools } from "./task-tools.js";
 import { SafetyPolicy } from "./safety-policy.js";
+import { loadSafetyPolicyFile } from "./safety-policy-file.js";
 
 export interface McpServices {
   processManager: ProcessManager;
@@ -29,7 +30,7 @@ export function createServices(config: AppConfig): McpServices {
       taskJournalFile: config.taskJournalFile,
     }),
     taskJournal,
-    safetyPolicy: new SafetyPolicy(config.safetyMode, config.defaultCwd),
+    safetyPolicy: new SafetyPolicy(config.safetyMode, config.defaultCwd, loadSafetyPolicyFile(config.safetyPolicyFile)),
     fileService: new FileService({
       defaultCwd: config.defaultCwd,
       maxChunkBytes: config.maxFileChunkBytes,

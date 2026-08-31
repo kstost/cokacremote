@@ -33,6 +33,7 @@ export interface AppConfig {
   maxFileChunkBytes: number;
   maxEditFileBytes: number;
   safetyMode: "unrestricted" | "safe";
+  safetyPolicyFile: string | undefined;
 }
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
@@ -256,6 +257,7 @@ export function loadConfig(
       4096,
     ),
     safetyMode: parseSafetyMode(env.MCP_SAFETY_MODE),
+    safetyPolicyFile: env.MCP_SAFETY_POLICY_FILE?.trim() ? path.resolve(processCwd, env.MCP_SAFETY_POLICY_FILE.trim()) : undefined,
     maxEditFileBytes: parseInteger(
       env.MCP_MAX_EDIT_FILE_BYTES,
       64 * 1024 * 1024,

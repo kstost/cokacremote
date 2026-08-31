@@ -155,6 +155,7 @@ describe("safety configuration", () => {
   it("defaults to unrestricted and accepts safe mode", () => {
     expect(loadConfig({ MCP_AUTH_TOKEN: AUTH_SECRET }, "/tmp").safetyMode).toBe("unrestricted");
     expect(loadConfig({ MCP_AUTH_TOKEN: AUTH_SECRET, MCP_SAFETY_MODE: "safe" }, "/tmp").safetyMode).toBe("safe");
+    expect(loadConfig({ MCP_AUTH_TOKEN: AUTH_SECRET, MCP_SAFETY_POLICY_FILE: "policy.json" }, "/tmp/base").safetyPolicyFile).toBe("/tmp/base/policy.json");
     expect(() => loadConfig({ MCP_AUTH_TOKEN: AUTH_SECRET, MCP_SAFETY_MODE: "maybe" }, "/tmp")).toThrow("MCP_SAFETY_MODE");
   });
 });

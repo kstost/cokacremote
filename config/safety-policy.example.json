@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "commands": [
+    {
+      "id": "allow-docker-rm",
+      "pattern": "(?:^|[;&|]\\s*)docker\\s+rm\\b",
+      "decision": "allow",
+      "reason": "Container removal is allowed in this development environment"
+    },
+    {
+      "id": "approve-sudo",
+      "pattern": "(?:^|[;&|]\\s*)sudo\\b",
+      "decision": "approval-required"
+    }
+  ],
+  "paths": [
+    {
+      "id": "deny-etc",
+      "prefix": "/etc",
+      "decision": "deny",
+      "reason": "System configuration is managed outside cokacremote"
+    },
+    {
+      "id": "allow-workspace-generated",
+      "prefix": "${workspace}/generated",
+      "decision": "allow"
+    }
+  ],
+  "defaults": {
+    "unmatchedCommand": "allow",
+    "outsideWorkspace": "approval-required"
+  }
+}

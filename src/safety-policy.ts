@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import type { SafetyPolicyFile } from "./safety-policy-file.js";
 
 export type SafetyMode = "unrestricted" | "safe";
 export type SafetyDecision = "allow" | "approval-required" | "deny";
@@ -48,10 +49,12 @@ export class SafetyPolicy {
   readonly mode: SafetyMode;
   readonly defaultCwd: string;
   readonly #approvals = new Map<string, PendingApproval>();
+  readonly #policyFile: SafetyPolicyFile | undefined;
 
-  constructor(mode: SafetyMode, defaultCwd: string) {
+  constructor(mode: SafetyMode, defaultCwd: string, policyFile?: SafetyPolicyFile) {
     this.mode = mode;
     this.defaultCwd = path.resolve(defaultCwd);
+    this.#policyFile = policyFile;
   }
 
   assessCommand(command: string): SafetyAssessment {
@@ -59,20 +62,38 @@ export class SafetyPolicy {
     if (DENY_COMMANDS.some((pattern) => pattern.test(command))) {
       return { decision: "deny", reason: "Command matches a destructive host-level deny rule" };
     }
+    for (const rule of this.#policyFile?.commands ?? []) {
+      if (new RegExp(rule.pattern, rule.flags ?? "i").test(command)) {
+        return { decision: rule.decision, reason: rule.reason ?? `Matched command policy rule ${rule.id}` };
+      }
+    }
     if (APPROVAL_COMMANDS.some((pattern) => pattern.test(command))) {
       return { decision: "approval-required", reason: "Command can modify system-wide state or delete recursively" };
     }
-    return { decision: "allow" };
+    return {
+      decision: this.#policyFile?.defaults?.unmatchedCommand ?? "allow",
+      ...(this.#policyFile?.defaults?.unmatchedCommand ? { reason: "Safety policy default for unmatched commands" } : {}),
+    };
   }
 
   assessPath(toolName: string, targetPath: string): SafetyAssessment {
     if (this.mode === "unrestricted") return { decision: "allow" };
     const absolute = path.resolve(targetPath);
-    if (within(this.defaultCwd, absolute)) return { decision: "allow" };
     if (toolName === "remove_path" && absolute === "/") {
       return { decision: "deny", reason: "Removing the filesystem root is denied" };
     }
-    return { decision: "approval-required", reason: `Write target is outside ${this.defaultCwd}` };
+    for (const rule of this.#policyFile?.paths ?? []) {
+      const expandedPrefix = rule.prefix.replaceAll("${workspace}", this.defaultCwd);
+      const prefix = path.isAbsolute(expandedPrefix) ? path.resolve(expandedPrefix) : path.resolve(this.defaultCwd, expandedPrefix);
+      if ((!rule.tools || rule.tools.includes(toolName)) && within(prefix, absolute)) {
+        return { decision: rule.decision, reason: rule.reason ?? `Matched path policy rule ${rule.id}` };
+      }
+    }
+    if (within(this.defaultCwd, absolute)) return { decision: "allow" };
+    return {
+      decision: this.#policyFile?.defaults?.outsideWorkspace ?? "approval-required",
+      reason: `Write target is outside ${this.defaultCwd}`,
+    };
   }
 
   request(toolName: string, summary: string): PendingApproval {

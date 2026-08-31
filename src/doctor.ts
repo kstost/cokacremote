@@ -2,6 +2,7 @@ import { access, constants, mkdir, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { loadConfig } from "./config.js";
+import { loadSafetyPolicyFile } from "./safety-policy-file.js";
 
 interface Check { name: string; ok: boolean; detail: string }
 function commandCheck(name: string, command: string, args = ["--version"]): Check {
@@ -23,6 +24,12 @@ async function main(): Promise<void> {
     checks.push({ name: "Default cwd", ok: true, detail: `${config.defaultCwd} (read/write)` });
   } catch (error) { checks.push({ name: "Default cwd", ok: false, detail: String(error) }); }
   checks.push({ name: "Task journal", ok: true, detail: config.taskJournalFile ?? "disabled" });
+  try {
+    if (config.safetyPolicyFile) loadSafetyPolicyFile(config.safetyPolicyFile);
+    checks.push({ name: "Safety policy", ok: true, detail: config.safetyPolicyFile ?? `${config.safetyMode} (built-in)` });
+  } catch (error) {
+    checks.push({ name: "Safety policy", ok: false, detail: String(error) });
+  }
   console.log("cokacremote doctor\n");
   checks.forEach((c) => console.log(`${c.ok ? "OK" : "FAIL"}  ${c.name.padEnd(14)} ${c.detail}`));
   const failed = checks.filter((c) => !c.ok).length;

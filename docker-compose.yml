@@ -18,6 +18,7 @@ services:
       MCP_PROCESS_IDLE_TIMEOUT_MS: ${MCP_PROCESS_IDLE_TIMEOUT_MS:-1800000}
       MCP_PROCESS_MAX_RUNTIME_MS: ${MCP_PROCESS_MAX_RUNTIME_MS:-14400000}
       MCP_SAFETY_MODE: ${MCP_SAFETY_MODE:-unrestricted}
+      MCP_SAFETY_POLICY_FILE: ${MCP_SAFETY_POLICY_FILE:-}
       MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
     ports:
       - "${MCP_LISTEN_HOST:-127.0.0.1}:${MCP_PORT:-3000}:${MCP_PORT:-3000}"
@@ -26,6 +27,7 @@ services:
       - ${WORKSPACE_PATH:-./workspace}:/workspace
       - ${SSH_PATH:-./.ssh}:/home/node/.ssh
       - cokacremote-data:/data
+      - ${CONFIG_PATH:-./config}:/config:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:$${MCP_PORT:-3000}/health || exit 1"]
       interval: 30s

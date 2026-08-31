@@ -145,6 +145,27 @@ The server provides 20 tools in total. `remove_path` permanently deletes targets
 
 `MCP_SAFETY_MODE=unrestricted` preserves the original full-access behavior. Set `MCP_SAFETY_MODE=safe` to require a one-time human approval for risky shell commands and writes outside `MCP_DEFAULT_CWD`. Extremely destructive host commands such as filesystem formatting, reboot/shutdown, raw device overwrite, and root recursive deletion are denied. Pending approvals appear in `/dashboard`, expire after 10 minutes, and are consumed once when the tool retries with the returned `approvalId`.
 
+Safe mode can be customized with `MCP_SAFETY_POLICY_FILE`. The file is JSON (`version: 1`) and supports ordered `commands` regex rules, ordered `paths` prefix rules, and default decisions. Rule decisions are `allow`, `approval-required`, or `deny`. User rules run before the built-in approval rules, so an environment can explicitly allow something such as `docker rm`; catastrophic built-in deny rules always run first and cannot be overridden. Path rules support `${workspace}` as an alias for `MCP_DEFAULT_CWD` and can optionally be limited to named MCP tools.
+
+Docker Compose mounts `${CONFIG_PATH:-./config}` read-only at `/config`. Copy `config/safety-policy.example.json` to `config/safety-policy.json`, set `MCP_SAFETY_MODE=safe` and `MCP_SAFETY_POLICY_FILE=/config/safety-policy.json`, then restart the service. `npm run doctor` validates the configured policy file and fails if the JSON, regex, version, or decision values are invalid.
+
+Example policy:
+
+```json
+{
+  "version": 1,
+  "commands": [
+    { "id": "allow-docker-rm", "pattern": "(?:^|[;&|]\\s*)docker\\s+rm\\b", "decision": "allow" },
+    { "id": "approve-sudo", "pattern": "(?:^|[;&|]\\s*)sudo\\b", "decision": "approval-required" }
+  ],
+  "paths": [
+    { "id": "deny-etc", "prefix": "/etc", "decision": "deny" },
+    { "id": "allow-generated", "prefix": "${workspace}/generated", "decision": "allow" }
+  ],
+  "defaults": { "unmatchedCommand": "allow", "outsideWorkspace": "approval-required" }
+}
+```
+
 ## Task dashboard
 
 Open `/dashboard` on the same server to inspect recent development tasks, summaries, and their ordered event timelines. The dashboard uses the same bearer/OAuth authentication as the MCP endpoint and refreshes every three seconds. Its JSON endpoints under `/dashboard/api/tasks` can also be used by external monitoring UIs.
