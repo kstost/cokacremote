@@ -141,6 +141,10 @@ The server provides 20 tools in total. `remove_path` permanently deletes targets
 - Python 3 if Python execution through `run_script` is needed
 - A stable, publicly accessible HTTPS domain when connecting directly from ChatGPT
 
+## Task dashboard
+
+Open `/dashboard` on the same server to inspect recent development tasks, summaries, and their ordered event timelines. The dashboard uses the same bearer/OAuth authentication as the MCP endpoint and refreshes every three seconds. Its JSON endpoints under `/dashboard/api/tasks` can also be used by external monitoring UIs.
+
 ## Reliability controls
 
 Three operational controls are available for long-running development sessions:

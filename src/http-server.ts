@@ -12,6 +12,7 @@ import express, { type Request, type Response } from "express";
 import { createBearerAuth, createHostValidation } from "./auth.js";
 import type { AppConfig } from "./config.js";
 import { errorMessage } from "./errors.js";
+import { registerDashboard } from "./dashboard.js";
 import { createMcpServer, type McpServices } from "./mcp-server.js";
 import { OAUTH_SCOPES, RemoteDevOAuthProvider } from "./oauth.js";
 
@@ -157,6 +158,7 @@ export async function startHttpServer(
   }
   const authenticate = createBearerAuth(config, oauthProvider);
   const parseMcpJson = express.json({ limit: config.maxRequestBody });
+  registerDashboard(app, config, services.taskJournal, authenticate);
 
   app.get("/health", (_request, response) => {
     response.json({
