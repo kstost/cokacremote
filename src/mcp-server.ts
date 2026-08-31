@@ -7,11 +7,13 @@ import { registerFileTools } from "./file-tools.js";
 import { ProcessManager } from "./process-manager.js";
 import { TaskJournal } from "./task-journal.js";
 import { registerTaskTools } from "./task-tools.js";
+import { SafetyPolicy } from "./safety-policy.js";
 
 export interface McpServices {
   processManager: ProcessManager;
   fileService: FileService;
   taskJournal: TaskJournal;
+  safetyPolicy: SafetyPolicy;
 }
 
 export function createServices(config: AppConfig): McpServices {
@@ -27,6 +29,7 @@ export function createServices(config: AppConfig): McpServices {
       taskJournalFile: config.taskJournalFile,
     }),
     taskJournal,
+    safetyPolicy: new SafetyPolicy(config.safetyMode, config.defaultCwd),
     fileService: new FileService({
       defaultCwd: config.defaultCwd,
       maxChunkBytes: config.maxFileChunkBytes,
@@ -56,8 +59,9 @@ export function createMcpServer(config: AppConfig, services: McpServices): McpSe
     services.processManager,
     services.fileService,
     services.taskJournal,
+    services.safetyPolicy,
   );
-  registerFileTools(server, config, services.fileService, services.taskJournal);
+  registerFileTools(server, config, services.fileService, services.taskJournal, services.safetyPolicy);
   registerTaskTools(server, services.taskJournal);
   return server;
 }

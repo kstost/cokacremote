@@ -141,6 +141,10 @@ The server provides 20 tools in total. `remove_path` permanently deletes targets
 - Python 3 if Python execution through `run_script` is needed
 - A stable, publicly accessible HTTPS domain when connecting directly from ChatGPT
 
+## Safety policy
+
+`MCP_SAFETY_MODE=unrestricted` preserves the original full-access behavior. Set `MCP_SAFETY_MODE=safe` to require a one-time human approval for risky shell commands and writes outside `MCP_DEFAULT_CWD`. Extremely destructive host commands such as filesystem formatting, reboot/shutdown, raw device overwrite, and root recursive deletion are denied. Pending approvals appear in `/dashboard`, expire after 10 minutes, and are consumed once when the tool retries with the returned `approvalId`.
+
 ## Task dashboard
 
 Open `/dashboard` on the same server to inspect recent development tasks, summaries, and their ordered event timelines. The dashboard uses the same bearer/OAuth authentication as the MCP endpoint and refreshes every three seconds. Its JSON endpoints under `/dashboard/api/tasks` can also be used by external monitoring UIs.

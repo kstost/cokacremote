@@ -6,6 +6,7 @@ import { FileService } from "./file-service.js";
 import { runTool } from "./tool-result.js";
 import { TaskJournal } from "./task-journal.js";
 import { traceTaskTool } from "./task-tracing.js";
+import { enforceAssessment, SafetyPolicy } from "./safety-policy.js";
 
 const readAnnotations = {
   readOnlyHint: true,
@@ -32,12 +33,18 @@ const pathSchema = z
   .describe("Absolute path, ~/ path, or a path relative to cwd/default cwd.");
 
 const taskIdSchema = z.string().uuid().optional().describe("Optional development task journal ID.");
+const approvalIdSchema = z.string().uuid().optional().describe("Approved one-time safety approval ID for a risky operation.");
 
 const fileModeSchema = z
   .string()
   .regex(/^(?:0o)?[0-7]{3,4}$/)
   .optional()
   .describe("Unix mode written as an octal string, for example 0755.");
+
+function enforcePath(policy: SafetyPolicy, files: FileService, toolName: string, target: string, cwd: string | undefined, approvalId: string | undefined): void {
+  const resolved = files.resolve(target, cwd);
+  enforceAssessment(policy, policy.assessPath(toolName, resolved), toolName, resolved, approvalId);
+}
 
 function parseMode(mode: string | undefined): number | undefined {
   if (mode === undefined) {
@@ -51,6 +58,7 @@ export function registerFileTools(
   config: AppConfig,
   files: FileService,
   journal: TaskJournal,
+  safetyPolicy: SafetyPolicy,
 ): void {
   server.registerTool(
     "list_directory",
@@ -131,11 +139,13 @@ export function registerFileTools(
         createParents: z.boolean().default(true),
         fileMode: fileModeSchema,
         taskId: taskIdSchema,
+        approvalId: approvalIdSchema,
       },
       annotations: writeAnnotations,
     },
-    async ({ path, cwd, content, encoding, mode, createParents, fileMode, taskId }) =>
+    async ({ path, cwd, content, encoding, mode, createParents, fileMode, taskId, approvalId }) =>
       runTool(() => traceTaskTool(journal, taskId, "write_file", async () => {
+        enforcePath(safetyPolicy, files, "write_file", path, cwd, approvalId);
         const result = await files.writeFileContent(path, cwd, content, encoding, mode, createParents, parseMode(fileMode));
         if (taskId) await journal.record("file.changed", { taskId, path: files.resolve(path, cwd), operation: "write_file" });
         return result;
@@ -156,11 +166,13 @@ export function registerFileTools(
         replaceAll: z.boolean().default(false),
         expectedOccurrences: z.number().int().min(0).optional(),
         taskId: taskIdSchema,
+        approvalId: approvalIdSchema,
       },
       annotations: writeAnnotations,
     },
-    async ({ path, cwd, oldText, newText, replaceAll, expectedOccurrences, taskId }) =>
+    async ({ path, cwd, oldText, newText, replaceAll, expectedOccurrences, taskId, approvalId }) =>
       runTool(() => traceTaskTool(journal, taskId, "replace_in_file", async () => {
+        enforcePath(safetyPolicy, files, "replace_in_file", path, cwd, approvalId);
         const result = await files.replaceInFile(path, cwd, oldText, newText, replaceAll, expectedOccurrences);
         if (taskId) await journal.record("file.changed", { taskId, path: files.resolve(path, cwd), operation: "replace_in_file" });
         return result;
@@ -180,11 +192,13 @@ export function registerFileTools(
         reverse: z.boolean().default(false),
         threeWay: z.boolean().default(false),
         taskId: taskIdSchema,
+        approvalId: approvalIdSchema,
       },
       annotations: writeAnnotations,
     },
-    async ({ patch, cwd, checkOnly, reverse, threeWay, taskId }) =>
+    async ({ patch, cwd, checkOnly, reverse, threeWay, taskId, approvalId }) =>
       runTool(() => traceTaskTool(journal, taskId, "apply_patch", async () => {
+        if (!checkOnly) enforceAssessment(safetyPolicy, safetyPolicy.assessPath("apply_patch", files.resolve(".", cwd)), "apply_patch", `patch in ${files.resolve(".", cwd)}`, approvalId);
         const result = await files.applyPatch(patch, cwd, { checkOnly, reverse, threeWay });
         if (taskId && !checkOnly) {
           const names = [...patch.matchAll(/^\+\+\+\s+(?:b\/)?(.+)$/gm)].map((match) => match[1]!).filter((name) => name !== "/dev/null");
@@ -208,11 +222,13 @@ export function registerFileTools(
         truncate: z.boolean().default(false),
         createParents: z.boolean().default(true),
         taskId: taskIdSchema,
+        approvalId: approvalIdSchema,
       },
       annotations: writeAnnotations,
     },
-    async ({ path, cwd, dataBase64, offset, truncate, createParents, taskId }) =>
+    async ({ path, cwd, dataBase64, offset, truncate, createParents, taskId, approvalId }) =>
       runTool(() => traceTaskTool(journal, taskId, "upload_file", async () => {
+        enforcePath(safetyPolicy, files, "upload_file", path, cwd, approvalId);
         const result = await files.uploadChunk(path, cwd, dataBase64, offset, truncate, createParents);
         if (taskId) await journal.record("file.changed", { taskId, path: files.resolve(path, cwd), operation: "upload_file" });
         return result;
@@ -252,11 +268,12 @@ export function registerFileTools(
         cwd: cwdSchema,
         recursive: z.boolean().default(true),
         mode: fileModeSchema,
+        approvalId: approvalIdSchema,
       },
       annotations: writeAnnotations,
     },
-    async ({ path, cwd, recursive, mode }) =>
-      runTool(() => files.makeDirectory(path, cwd, recursive, parseMode(mode))),
+    async ({ path, cwd, recursive, mode, approvalId }) =>
+      runTool(() => { enforcePath(safetyPolicy, files, "make_directory", path, cwd, approvalId); return files.makeDirectory(path, cwd, recursive, parseMode(mode)); }),
   );
 
   server.registerTool(
@@ -270,11 +287,12 @@ export function registerFileTools(
         cwd: cwdSchema,
         recursive: z.boolean().default(true),
         force: z.boolean().default(true),
+        approvalId: approvalIdSchema,
       },
       annotations: writeAnnotations,
     },
-    async ({ sourcePath, destinationPath, cwd, recursive, force }) =>
-      runTool(() => files.copyPath(sourcePath, destinationPath, cwd, recursive, force)),
+    async ({ sourcePath, destinationPath, cwd, recursive, force, approvalId }) =>
+      runTool(() => { enforcePath(safetyPolicy, files, "copy_path", destinationPath, cwd, approvalId); return files.copyPath(sourcePath, destinationPath, cwd, recursive, force); }),
   );
 
   server.registerTool(
@@ -287,11 +305,20 @@ export function registerFileTools(
         destinationPath: pathSchema,
         cwd: cwdSchema,
         overwrite: z.boolean().default(false),
+        approvalId: approvalIdSchema,
       },
       annotations: writeAnnotations,
     },
-    async ({ sourcePath, destinationPath, cwd, overwrite }) =>
-      runTool(() => files.movePath(sourcePath, destinationPath, cwd, overwrite)),
+    async ({ sourcePath, destinationPath, cwd, overwrite, approvalId }) =>
+      runTool(() => {
+        const source = files.resolve(sourcePath, cwd);
+        const destination = files.resolve(destinationPath, cwd);
+        const sourceAssessment = safetyPolicy.assessPath("move_path", source);
+        const destinationAssessment = safetyPolicy.assessPath("move_path", destination);
+        const assessment = sourceAssessment.decision === "deny" ? sourceAssessment : destinationAssessment.decision === "deny" ? destinationAssessment : sourceAssessment.decision === "approval-required" ? sourceAssessment : destinationAssessment;
+        enforceAssessment(safetyPolicy, assessment, "move_path", `${source} -> ${destination}`, approvalId);
+        return files.movePath(sourcePath, destinationPath, cwd, overwrite);
+      }),
   );
 
   server.registerTool(
@@ -305,11 +332,12 @@ export function registerFileTools(
         cwd: cwdSchema,
         recursive: z.boolean().default(false),
         force: z.boolean().default(false),
+        approvalId: approvalIdSchema,
       },
       annotations: writeAnnotations,
     },
-    async ({ path, cwd, recursive, force }) =>
-      runTool(() => files.removePath(path, cwd, recursive, force)),
+    async ({ path, cwd, recursive, force, approvalId }) =>
+      runTool(() => { enforcePath(safetyPolicy, files, "remove_path", path, cwd, approvalId); return files.removePath(path, cwd, recursive, force); }),
   );
 
   server.registerTool(
@@ -321,11 +349,12 @@ export function registerFileTools(
         path: pathSchema,
         cwd: cwdSchema,
         mode: z.string().regex(/^(?:0o)?[0-7]{3,4}$/),
+        approvalId: approvalIdSchema,
       },
       annotations: writeAnnotations,
     },
-    async ({ path, cwd, mode }) =>
-      runTool(() => files.changeMode(path, cwd, parseMode(mode) ?? 0)),
+    async ({ path, cwd, mode, approvalId }) =>
+      runTool(() => { enforcePath(safetyPolicy, files, "chmod_path", path, cwd, approvalId); return files.changeMode(path, cwd, parseMode(mode) ?? 0); }),
   );
 
   server.registerTool(

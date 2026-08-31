@@ -32,6 +32,7 @@ export interface AppConfig {
   maxProcesses: number;
   maxFileChunkBytes: number;
   maxEditFileBytes: number;
+  safetyMode: "unrestricted" | "safe";
 }
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
@@ -66,6 +67,14 @@ function parseInteger(
     throw new Error(`${name} must be an integer ${range}`);
   }
   return parsed;
+}
+
+function parseSafetyMode(value: string | undefined): "unrestricted" | "safe" {
+  const mode = value?.trim().toLowerCase() || "unrestricted";
+  if (mode !== "unrestricted" && mode !== "safe") {
+    throw new Error("MCP_SAFETY_MODE must be 'unrestricted' or 'safe'");
+  }
+  return mode;
 }
 
 function validateAuthSecret(value: string | undefined, name: string): void {
@@ -246,6 +255,7 @@ export function loadConfig(
       "MCP_MAX_FILE_CHUNK_BYTES",
       4096,
     ),
+    safetyMode: parseSafetyMode(env.MCP_SAFETY_MODE),
     maxEditFileBytes: parseInteger(
       env.MCP_MAX_EDIT_FILE_BYTES,
       64 * 1024 * 1024,

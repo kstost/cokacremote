@@ -8,6 +8,7 @@ import { runScript } from "./script-runner.js";
 import { runTool } from "./tool-result.js";
 import { TaskJournal } from "./task-journal.js";
 import { traceTaskTool } from "./task-tracing.js";
+import { enforceAssessment, SafetyPolicy } from "./safety-policy.js";
 
 const fullAccessAnnotations = {
   readOnlyHint: false,
@@ -29,6 +30,7 @@ export function registerExecTools(
   processManager: ProcessManager,
   fileService: FileService,
   taskJournal: TaskJournal,
+  safetyPolicy: SafetyPolicy,
 ): void {
   const environmentSchema = z
     .record(z.string(), z.string())
@@ -71,6 +73,7 @@ export function registerExecTools(
           .default(10_000)
           .describe("How long to wait for output before returning a running session."),
         taskId: z.string().uuid().optional().describe("Optional development task journal ID."),
+        approvalId: z.string().uuid().optional().describe("Approved one-time safety approval ID for a risky operation."),
         maxOutputBytes: z
           .number()
           .int()
@@ -91,9 +94,11 @@ export function registerExecTools(
       timeoutMs,
       yieldTimeMs,
       taskId,
+      approvalId,
       maxOutputBytes,
     }) =>
       runTool(() => traceTaskTool(taskJournal, taskId, "exec_command", async () => {
+        enforceAssessment(safetyPolicy, safetyPolicy.assessCommand(cmd), "exec_command", cmd.slice(0, 300), approvalId);
         const cwd = fileService.resolve(".", workdir);
         const executable = shell || config.defaultShell;
         const sessionId = processManager.start({
@@ -154,6 +159,7 @@ export function registerExecTools(
           .max(30_000)
           .default(10_000),
         taskId: z.string().uuid().optional().describe("Optional development task journal ID."),
+        approvalId: z.string().uuid().optional().describe("Approved one-time safety approval ID for a risky operation."),
         maxOutputBytes: z
           .number()
           .int()
@@ -179,10 +185,12 @@ export function registerExecTools(
       timeoutMs,
       yieldTimeMs,
       taskId,
+      approvalId,
       maxOutputBytes,
       keepScript,
     }) =>
       runTool(() => traceTaskTool(taskJournal, taskId, "run_script", async () => {
+        enforceAssessment(safetyPolicy, safetyPolicy.assessCommand(script), "run_script", `${runtime} script: ${script.slice(0, 240)}`, approvalId);
         const result = await runScript(processManager, {
           runtime,
           script,
