@@ -169,7 +169,8 @@ export async function startHttpServer(
       activeMcpSessions: 0,
       activeMcpRequests,
       managedProcesses: services.processManager.list().length,
-      unrestrictedHostAccess: true,
+      unrestrictedHostAccess: config.safetyMode === "unrestricted",
+      safetyMode: config.safetyMode,
       oauthEnabled: config.oauthEnabled,
     });
   });

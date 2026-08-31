@@ -13,7 +13,7 @@ async function main(): Promise<void> {
 
   console.log(`cokacremote listening at ${endpointUrl}`);
   console.log(`default cwd: ${config.defaultCwd}`);
-  console.log("execution mode: unrestricted host access");
+  console.log(config.safetyMode === "safe" ? "execution mode: safe policy enforcement" : "execution mode: unrestricted host access");
   console.log(
     config.allowNoAuth && !config.authToken && !config.oauthEnabled
       ? "authentication: disabled"
