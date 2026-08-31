@@ -6,7 +6,8 @@ import { FileService } from "./file-service.js";
 import { runTool } from "./tool-result.js";
 import { TaskJournal } from "./task-journal.js";
 import { traceTaskTool } from "./task-tracing.js";
-import { enforceAssessment, SafetyPolicy } from "./safety-policy.js";
+import { enforceAssessment, SafetyPolicy, type SafetyAssessment } from "./safety-policy.js";
+import { extractPatchPaths } from "./patch-paths.js";
 
 const readAnnotations = {
   readOnlyHint: true,
@@ -206,18 +207,27 @@ export function registerFileTools(
     },
     async ({ patch, cwd, checkOnly, reverse, threeWay, taskId, approvalId }) =>
       runTool(() => traceTaskTool(journal, taskId, "apply_patch", async () => {
-        if (!checkOnly) enforceAssessment(
-          safetyPolicy,
-          safetyPolicy.assessPath("apply_patch", files.resolve(".", cwd)),
-          "apply_patch",
-          `patch in ${files.resolve(".", cwd)}`,
-          approvalId,
-          JSON.stringify({ cwd: files.resolve(".", cwd), patch, reverse, threeWay }),
-        );
+        const patchPaths = extractPatchPaths(patch);
+        const resolvedPatchPaths = patchPaths.map((name) => files.resolve(name, cwd));
+        if (!checkOnly) {
+          let assessment: SafetyAssessment = { decision: "allow" };
+          for (const target of resolvedPatchPaths) {
+            const current = safetyPolicy.assessPath("apply_patch", target);
+            if (current.decision === "deny") { assessment = current; break; }
+            if (current.decision === "approval-required") assessment = current;
+          }
+          enforceAssessment(
+            safetyPolicy,
+            assessment,
+            "apply_patch",
+            `patch targets: ${resolvedPatchPaths.slice(0, 4).join(", ")}${resolvedPatchPaths.length > 4 ? ` (+${resolvedPatchPaths.length - 4} more)` : ""}`,
+            approvalId,
+            JSON.stringify({ cwd: files.resolve(".", cwd), targets: resolvedPatchPaths, patch, reverse, threeWay }),
+          );
+        }
         const result = await files.applyPatch(patch, cwd, { checkOnly, reverse, threeWay });
         if (taskId && !checkOnly) {
-          const names = [...patch.matchAll(/^\+\+\+\s+(?:b\/)?(.+)$/gm)].map((match) => match[1]!).filter((name) => name !== "/dev/null");
-          for (const name of new Set(names)) await journal.record("file.changed", { taskId, path: files.resolve(name, cwd), operation: "apply_patch" });
+          for (const target of resolvedPatchPaths) await journal.record("file.changed", { taskId, path: target, operation: "apply_patch" });
         }
         return result;
       })),

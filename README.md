@@ -485,4 +485,4 @@ The user assumes full responsibility for all consequences arising from the use o
 **ALL RISKS ASSOCIATED WITH USE ARE BORNE BY THE USER**
 
 
-Safety approvals are one-time, expire after 10 minutes, and are SHA-256 bound to the exact requested operation so they cannot be reused for modified commands or file operations.
+Safety approvals are one-time, expire after 10 minutes, and are SHA-256 bound to the exact requested operation so they cannot be reused for modified commands or file operations. `apply_patch` additionally parses Git/unified-diff headers and evaluates every create/delete/rename/copy target path before applying a patch; patches whose targets cannot be determined are rejected.
