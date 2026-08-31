@@ -38,4 +38,12 @@ describe("SafetyPolicyAudit", () => {
     expect(diff.some((line) => line.type === "remove" && line.line.includes("allow"))).toBe(true);
     expect(diff.some((line) => line.type === "add" && line.line.includes("deny"))).toBe(true);
   });
+
+  it("serializes concurrent audit writes so the hash chain remains valid", async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), "cokacremote-audit-"));
+    const audit = new SafetyPolicyAudit(path.join(dir, "policy.json"));
+    await Promise.all(Array.from({ length: 20 }, (_, index) => audit.record("save", { version: 1, defaults: { unmatchedCommand: index % 2 ? "allow" : "deny" } })));
+    expect(await audit.verify()).toMatchObject({ integrity: true, chainedEntries: 20 });
+    expect(await audit.list(100)).toHaveLength(20);
+  });
 });

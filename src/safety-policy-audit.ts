@@ -74,6 +74,7 @@ export function diffSafetyPolicies(from: SafetyPolicyFile, to: SafetyPolicyFile)
 
 export class SafetyPolicyAudit {
   readonly file: string | undefined;
+  #writeQueue: Promise<void> = Promise.resolve();
 
   constructor(policyFile: string | undefined) {
     this.file = policyFile ? `${path.resolve(policyFile)}.history.jsonl` : undefined;
@@ -81,23 +82,23 @@ export class SafetyPolicyAudit {
 
   async record(action: PolicyAuditAction, policy: SafetyPolicyFile, rollbackFromRevisionId?: string): Promise<PolicyAuditEntry | undefined> {
     if (!this.file) return undefined;
-    const validated = parseSafetyPolicyFile(policy);
-    const canonical = JSON.stringify(validated);
-    const prior = await this.#chronological();
-    const previous = prior.at(-1);
-    const previousHash = previous?.entryHash;
-    const base: Omit<PolicyAuditEntry, "entryHash"> = {
-      revisionId: randomUUID(),
-      timestamp: new Date().toISOString(),
-      action,
-      sha256: hashText(canonical),
-      policy: validated,
-      ...(rollbackFromRevisionId ? { rollbackFromRevisionId } : {}),
-      ...(previousHash ? { prevEntryHash: previousHash } : {}),
-    };
-    const entry: PolicyAuditEntry = { ...base, entryHash: hashText(chainPayload(base)) };
-    await appendFile(this.file, `${JSON.stringify(entry)}\n`, { encoding: "utf8", mode: 0o600 });
-    return entry;
+    let recorded: PolicyAuditEntry | undefined;
+    const write = this.#writeQueue.then(async () => {
+      const validated = parseSafetyPolicyFile(policy);
+      const canonical = JSON.stringify(validated);
+      const prior = await this.#chronological();
+      const previous = prior.at(-1);
+      const previousHash = previous?.entryHash;
+      const base: Omit<PolicyAuditEntry, "entryHash"> = {
+        revisionId: randomUUID(), timestamp: new Date().toISOString(), action, sha256: hashText(canonical), policy: validated,
+        ...(rollbackFromRevisionId ? { rollbackFromRevisionId } : {}), ...(previousHash ? { prevEntryHash: previousHash } : {}),
+      };
+      recorded = { ...base, entryHash: hashText(chainPayload(base)) };
+      await appendFile(this.file!, `${JSON.stringify(recorded)}\n`, { encoding: "utf8", mode: 0o600 });
+    });
+    this.#writeQueue = write.catch(() => undefined);
+    await write;
+    return recorded;
   }
 
   async list(limit = 100): Promise<PolicyAuditEntry[]> {
