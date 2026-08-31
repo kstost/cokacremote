@@ -536,6 +536,8 @@ confirm_replace() {
     FOUND=1
   fi
 
+  FOUND=0
+
   if [ "$FOUND" -eq 1 ]; then
     echo "기존 workmachine 관련 컨테이너 또는 볼륨이 존재합니다."
     echo "복원을 계속하면 해당 컨테이너와 $STATE_VOLUME 볼륨을 삭제하고 백업본으로 교체합니다."
