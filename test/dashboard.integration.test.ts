@@ -30,7 +30,11 @@ describe("task dashboard", () => {
     const headers = { authorization: `Bearer ${token}` };
     const html = await fetch(base, { headers });
     expect(html.status).toBe(200);
-    expect(await html.text()).toContain("Development task timeline");
+    const dashboardHtml = await html.text();
+    expect(dashboardHtml).toContain("Development task timeline");
+    const script = dashboardHtml.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    expect(script).toBeTruthy();
+    expect(() => new Function(script!)).not.toThrow();
     const tasks = await (await fetch(`${base}/api/tasks`, { headers })).json() as { tasks: Array<{ taskId: string }> };
     expect(tasks.tasks.some((item) => item.taskId === task.taskId)).toBe(true);
     const events = await (await fetch(`${base}/api/tasks/${task.taskId}/events`, { headers })).json() as { events: Array<{ event: string }> };
