@@ -195,7 +195,7 @@ When `MCP_TASK_JOURNAL_FILE` is configured, related MCP calls can be grouped int
 3. Use `get_task` or `list_tasks` to review commands and changed files.
 4. Call `complete_task` when the work is finished.
 
-Calls without `taskId` remain fully backward compatible. The journal stores command metadata and changed paths, not stdout/stderr or file contents.
+Calls without `taskId` remain fully backward compatible. The journal stores command metadata and changed paths, not stdout/stderr or file contents. Common credential forms in command metadata (token/password/secret/API-key assignments, flags, and Authorization headers) are redacted before they enter process state or the journal.
 
 ## Local development
 

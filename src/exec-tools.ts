@@ -9,6 +9,7 @@ import { runTool } from "./tool-result.js";
 import { TaskJournal } from "./task-journal.js";
 import { traceTaskTool } from "./task-tracing.js";
 import { enforceAssessment, SafetyPolicy } from "./safety-policy.js";
+import { redactCommand } from "./redaction.js";
 
 const fullAccessAnnotations = {
   readOnlyHint: false,
@@ -102,7 +103,7 @@ export function registerExecTools(
           safetyPolicy,
           safetyPolicy.assessCommand(cmd),
           "exec_command",
-          cmd.slice(0, 300),
+          redactCommand(cmd).slice(0, 300),
           approvalId,
           JSON.stringify({ cmd, cwd: fileService.resolve(".", workdir), shell: shell || config.defaultShell, login, env, stdin }),
         );

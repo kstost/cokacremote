@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { isAscii } from "node:buffer";
 import { errorMessage } from "./errors.js";
+import { redactCommand } from "./redaction.js";
 
 const OUTPUT_CHUNK_BYTES = 16 * 1024;
 
@@ -205,7 +206,7 @@ export class ProcessManager {
     const managed: ManagedProcess = {
       sessionId,
       child,
-      command: request.commandForDisplay,
+      command: redactCommand(request.commandForDisplay),
       cwd: request.cwd,
       startedAt: Date.now(),
       endedAt: undefined,
