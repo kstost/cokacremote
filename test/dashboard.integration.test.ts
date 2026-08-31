@@ -55,11 +55,15 @@ describe("task dashboard", () => {
     const reloaded = await fetch(`${base}/api/policy/reload`, { method: "POST", headers });
     expect(reloaded.status).toBe(200);
     expect(services.safetyPolicy.assessCommand("danger").decision).toBe("allow");
-    const historyResponse = await (await fetch(`${base}/api/policy/history`, { headers })).json() as { history: Array<{ revisionId: string; action: string; sha256: string }> };
+    const historyResponse = await (await fetch(`${base}/api/policy/history`, { headers })).json() as { history: Array<{ revisionId: string; action: string; sha256: string; entryHash?: string }>; verification: { integrity: boolean; chainedEntries: number } };
     expect(historyResponse.history.map((entry) => entry.action)).toEqual(["reload", "save"]);
-    expect(historyResponse.history.every((entry) => entry.sha256.length === 64)).toBe(true);
+    expect(historyResponse.history.every((entry) => entry.sha256.length === 64 && entry.entryHash?.length === 64)).toBe(true);
+    expect(historyResponse.verification).toMatchObject({ integrity: true, chainedEntries: 2 });
     const saveRevision = historyResponse.history.find((entry) => entry.action === "save");
     expect(saveRevision).toBeTruthy();
+    const diffResponse = await (await fetch(`${base}/api/policy/diff/${saveRevision!.revisionId}`, { headers })).json() as { diff: Array<{ type: string; line: string }> };
+    expect(diffResponse.diff.some((line) => line.type === "remove" && line.line.includes("deny-danger"))).toBe(true);
+    expect(diffResponse.diff.some((line) => line.type === "add" && line.line.includes("allow-danger"))).toBe(true);
     const rollback = await fetch(`${base}/api/policy/rollback/${saveRevision!.revisionId}`, { method: "POST", headers });
     expect(rollback.status).toBe(200);
     expect(services.safetyPolicy.assessCommand("danger").decision).toBe("deny");
