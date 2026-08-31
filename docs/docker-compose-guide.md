@@ -344,3 +344,16 @@ docker compose up -d --force-recreate
 - Does `MCP_TRUST_PROXY_HOPS` match the actual proxy chain?
 - Are OAuth state and SSH keys backed up and handled as sensitive data?
 - Are images rebuilt and `npm audit` results reviewed regularly?
+
+
+## Process lifecycle and diagnostics
+
+The Docker setup keeps operational state under `/data`. By default:
+
+```dotenv
+MCP_PROCESS_IDLE_TIMEOUT_MS=1800000
+MCP_PROCESS_MAX_RUNTIME_MS=14400000
+MCP_TASK_JOURNAL_FILE=/data/task-journal.jsonl
+```
+
+Use `docker compose exec cokacremote npm run doctor` to verify runtime dependencies and workspace access. The task journal is retained in the `cokacremote-data` volume across container restarts.

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { isAscii } from "node:buffer";
+import { appendFile, mkdir } from "node:fs/promises";
+import path from "node:path";
 
 import { errorMessage } from "./errors.js";
 
@@ -34,6 +36,7 @@ interface ManagedProcess {
   waiters: Set<() => void>;
   exitWaiters: Set<() => void>;
   timeoutHandle: NodeJS.Timeout | undefined;
+  idleTimeoutHandle: NodeJS.Timeout | undefined;
   cleanup: (() => Promise<void>) | undefined;
 }
 
@@ -174,6 +177,9 @@ export interface ProcessManagerOptions {
   processRetentionMs: number;
   maxProcesses: number;
   defaultMaxOutputBytes: number;
+  processIdleTimeoutMs?: number;
+  processMaxRuntimeMs?: number;
+  taskJournalFile?: string;
 }
 
 export class ProcessManager {
@@ -216,6 +222,7 @@ export class ProcessManager {
       waiters: new Set(),
       exitWaiters: new Set(),
       timeoutHandle: undefined,
+      idleTimeoutHandle: undefined,
       cleanup: request.cleanup,
     };
     this.#processes.set(sessionId, managed);
@@ -237,7 +244,8 @@ export class ProcessManager {
       this.#finish(managed, code, signal);
     });
 
-    const timeoutMs = request.timeoutMs ?? 0;
+    const requestedTimeoutMs = request.timeoutMs ?? 0;
+    const timeoutMs = requestedTimeoutMs > 0 ? requestedTimeoutMs : (this.#options.processMaxRuntimeMs ?? 0);
     if (timeoutMs > 0) {
       managed.timeoutHandle = setTimeout(() => {
         managed.timedOut = true;
@@ -252,6 +260,9 @@ export class ProcessManager {
       }, timeoutMs);
       managed.timeoutHandle.unref();
     }
+
+    this.#resetIdleTimeout(managed);
+    this.#journal("process.started", managed);
 
     if (request.stdin !== undefined && request.stdin.length > 0) {
       try {
@@ -495,6 +506,7 @@ export class ProcessManager {
     data: Buffer,
   ): void {
     managed.totalOutputBytes += data.length;
+    this.#resetIdleTimeout(managed);
     const pending = managed.pendingOutput[stream];
     const combined = pending.length > 0 ? Buffer.concat([pending, data]) : data;
     const split = splitOutputChunks(combined);
@@ -563,6 +575,11 @@ export class ProcessManager {
       clearTimeout(managed.timeoutHandle);
       managed.timeoutHandle = undefined;
     }
+    if (managed.idleTimeoutHandle) {
+      clearTimeout(managed.idleTimeoutHandle);
+      managed.idleTimeoutHandle = undefined;
+    }
+    this.#journal("process.completed", managed);
     this.#notify(managed);
     const exitWaiters = [...managed.exitWaiters];
     managed.exitWaiters.clear();
@@ -574,6 +591,31 @@ export class ProcessManager {
         managed.error ??= `Cleanup failed: ${errorMessage(error)}`;
       });
     }
+  }
+
+  #resetIdleTimeout(managed: ManagedProcess): void {
+    if (managed.idleTimeoutHandle) clearTimeout(managed.idleTimeoutHandle);
+    const idleTimeoutMs = this.#options.processIdleTimeoutMs ?? 0;
+    if (idleTimeoutMs <= 0 || !this.#isRunning(managed)) {
+      managed.idleTimeoutHandle = undefined;
+      return;
+    }
+    managed.idleTimeoutHandle = setTimeout(() => {
+      managed.timedOut = true;
+      managed.error ??= `Process was idle for ${idleTimeoutMs} ms`;
+      this.#journal("process.idle_timeout", managed);
+      this.#signal(managed, "SIGTERM");
+      const forceTimer = setTimeout(() => { if (this.#isRunning(managed)) this.#signal(managed, "SIGKILL"); }, 5000);
+      forceTimer.unref();
+    }, idleTimeoutMs);
+    managed.idleTimeoutHandle.unref();
+  }
+
+  #journal(event: string, managed: ManagedProcess): void {
+    const file = this.#options.taskJournalFile;
+    if (!file) return;
+    const line = JSON.stringify({ timestamp: new Date().toISOString(), event, sessionId: managed.sessionId, command: managed.command, cwd: managed.cwd, pid: managed.child.pid, exitCode: managed.exitCode, signal: managed.signal, timedOut: managed.timedOut, error: managed.error, totalOutputBytes: managed.totalOutputBytes }) + "\n";
+    void mkdir(path.dirname(file), { recursive: true }).then(() => appendFile(file, line, { encoding: "utf8", mode: 0o600 })).catch((error) => { managed.error ??= `Journal write failed: ${errorMessage(error)}`; });
   }
 
   #notify(managed: ManagedProcess): void {

@@ -18,6 +18,9 @@ export function createServices(config: AppConfig): McpServices {
       processRetentionMs: config.processRetentionMs,
       maxProcesses: config.maxProcesses,
       defaultMaxOutputBytes: config.maxOutputBytes,
+      processIdleTimeoutMs: config.processIdleTimeoutMs,
+      processMaxRuntimeMs: config.processMaxRuntimeMs,
+      taskJournalFile: config.taskJournalFile,
     }),
     fileService: new FileService({
       defaultCwd: config.defaultCwd,

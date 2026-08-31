@@ -128,3 +128,25 @@ describe("loadConfig", () => {
     ).toThrow("must not contain user credentials");
   });
 });
+
+describe("lifecycle configuration", () => {
+  it("loads lifecycle defaults and explicit overrides", () => {
+    const defaults = loadConfig({ MCP_AUTH_TOKEN: "x".repeat(32) }, "/tmp");
+    expect(defaults.processIdleTimeoutMs).toBe(30 * 60 * 1000);
+    expect(defaults.processMaxRuntimeMs).toBe(4 * 60 * 60 * 1000);
+    expect(defaults.taskJournalFile).toBeUndefined();
+
+    const configured = loadConfig(
+      {
+        MCP_AUTH_TOKEN: "x".repeat(32),
+        MCP_PROCESS_IDLE_TIMEOUT_MS: "1000",
+        MCP_PROCESS_MAX_RUNTIME_MS: "2000",
+        MCP_TASK_JOURNAL_FILE: "journal.jsonl",
+      },
+      "/tmp",
+    );
+    expect(configured.processIdleTimeoutMs).toBe(1000);
+    expect(configured.processMaxRuntimeMs).toBe(2000);
+    expect(configured.taskJournalFile).toBe("/tmp/journal.jsonl");
+  });
+});

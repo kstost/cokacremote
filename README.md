@@ -87,6 +87,8 @@ The MCP transport is stateless, but long-running command sessions are kept in me
 - Read, write, edit, transfer, and delete host files, including absolute paths
 - Built-in static Bearer authentication and OAuth 2.1/DCR/PKCE for ChatGPT
 - Stateless JSON transport per request, per-process output retention, and response size limits
+- Built-in `npm run doctor` diagnostics for runtime/tooling/workspace readiness
+- Optional persistent JSONL process journal plus idle/max-runtime process lifecycle controls
 - systemd and Nginx deployment examples for Linux VPS/EC2 environments
 
 ## Available tools
@@ -138,6 +140,22 @@ The server provides 20 tools in total. `remove_path` permanently deletes targets
 - OpenSSL for key generation
 - Python 3 if Python execution through `run_script` is needed
 - A stable, publicly accessible HTTPS domain when connecting directly from ChatGPT
+
+## Reliability controls
+
+Three operational controls are available for long-running development sessions:
+
+- `MCP_PROCESS_IDLE_TIMEOUT_MS`: terminates a process after no stdout/stderr activity for the configured interval. Default: `1800000` (30 minutes). Set `0` to disable.
+- `MCP_PROCESS_MAX_RUNTIME_MS`: fallback hard runtime limit when a tool call does not provide its own `timeoutMs`. Default: `14400000` (4 hours). Set `0` to disable.
+- `MCP_TASK_JOURNAL_FILE`: optional JSONL journal containing process start/completion/idle-timeout events. Docker Compose defaults this to `/data/task-journal.jsonl`, which is stored in the persistent `cokacremote-data` volume.
+
+Run a host readiness check with:
+
+```bash
+npm run doctor
+```
+
+The doctor checks Node.js, Git, the configured shell, npm, Python, workspace read/write access, and the configured task-journal location.
 
 ## Local development
 

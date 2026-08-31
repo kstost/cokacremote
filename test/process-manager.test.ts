@@ -133,3 +133,55 @@ describe("ProcessManager", () => {
     expect(first.output + second.output).not.toContain("�");
   });
 });
+
+describe("ProcessManager lifecycle controls", () => {
+  it("terminates an idle process using the configured idle timeout", async () => {
+    const manager = new ProcessManager({
+      maxRetainedOutputBytes: 1024 * 1024,
+      processRetentionMs: 60_000,
+      maxProcesses: 16,
+      defaultMaxOutputBytes: 1024 * 1024,
+      processIdleTimeoutMs: 50,
+    });
+    try {
+      const sessionId = manager.start({
+        executable: "/bin/bash",
+        args: ["-c", "sleep 10"],
+        commandForDisplay: "idle timeout test",
+        cwd: process.cwd(),
+      });
+      await manager.waitForExit(sessionId, 3000);
+      const result = await manager.read(sessionId);
+      expect(result.running).toBe(false);
+      expect(result.timedOut).toBe(true);
+      expect(result.error).toContain("idle");
+    } finally {
+      await manager.shutdown();
+    }
+  });
+
+  it("applies the configured maximum runtime when no per-command timeout is supplied", async () => {
+    const manager = new ProcessManager({
+      maxRetainedOutputBytes: 1024 * 1024,
+      processRetentionMs: 60_000,
+      maxProcesses: 16,
+      defaultMaxOutputBytes: 1024 * 1024,
+      processMaxRuntimeMs: 50,
+    });
+    try {
+      const sessionId = manager.start({
+        executable: "/bin/bash",
+        args: ["-c", "sleep 10"],
+        commandForDisplay: "max runtime test",
+        cwd: process.cwd(),
+      });
+      await manager.waitForExit(sessionId, 3000);
+      const result = await manager.read(sessionId);
+      expect(result.running).toBe(false);
+      expect(result.timedOut).toBe(true);
+      expect(result.error).toContain("timeout");
+    } finally {
+      await manager.shutdown();
+    }
+  });
+});

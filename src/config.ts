@@ -26,6 +26,9 @@ export interface AppConfig {
   maxOutputBytes: number;
   maxRetainedProcessOutputBytes: number;
   processRetentionMs: number;
+  processIdleTimeoutMs: number;
+  processMaxRuntimeMs: number;
+  taskJournalFile: string | undefined;
   maxProcesses: number;
   maxFileChunkBytes: number;
   maxEditFileBytes: number;
@@ -216,6 +219,21 @@ export function loadConfig(
       "MCP_PROCESS_RETENTION_MS",
       1000,
     ),
+    processIdleTimeoutMs: parseInteger(
+      env.MCP_PROCESS_IDLE_TIMEOUT_MS,
+      30 * 60 * 1000,
+      "MCP_PROCESS_IDLE_TIMEOUT_MS",
+      0,
+    ),
+    processMaxRuntimeMs: parseInteger(
+      env.MCP_PROCESS_MAX_RUNTIME_MS,
+      4 * 60 * 60 * 1000,
+      "MCP_PROCESS_MAX_RUNTIME_MS",
+      0,
+    ),
+    taskJournalFile: env.MCP_TASK_JOURNAL_FILE?.trim()
+      ? path.resolve(processCwd, env.MCP_TASK_JOURNAL_FILE.trim())
+      : undefined,
     maxProcesses: parseInteger(
       env.MCP_MAX_PROCESSES,
       128,
