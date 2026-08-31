@@ -158,7 +158,7 @@ export async function startHttpServer(
   }
   const authenticate = createBearerAuth(config, oauthProvider);
   const parseMcpJson = express.json({ limit: config.maxRequestBody });
-  registerDashboard(app, config, services.taskJournal, services.safetyPolicy, authenticate);
+  registerDashboard(app, config, services.taskJournal, services.safetyPolicy, authenticate, parseMcpJson);
 
   app.get("/health", (_request, response) => {
     response.json({

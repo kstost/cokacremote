@@ -49,12 +49,20 @@ export class SafetyPolicy {
   readonly mode: SafetyMode;
   readonly defaultCwd: string;
   readonly #approvals = new Map<string, PendingApproval>();
-  readonly #policyFile: SafetyPolicyFile | undefined;
+  #policyFile: SafetyPolicyFile | undefined;
 
   constructor(mode: SafetyMode, defaultCwd: string, policyFile?: SafetyPolicyFile) {
     this.mode = mode;
     this.defaultCwd = path.resolve(defaultCwd);
     this.#policyFile = policyFile;
+  }
+
+  get policyFile(): SafetyPolicyFile | undefined {
+    return this.#policyFile ? structuredClone(this.#policyFile) : undefined;
+  }
+
+  reload(policyFile: SafetyPolicyFile | undefined): void {
+    this.#policyFile = policyFile ? structuredClone(policyFile) : undefined;
   }
 
   assessCommand(command: string): SafetyAssessment {

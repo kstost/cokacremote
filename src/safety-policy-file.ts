@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { SafetyDecision } from "./safety-policy.js";
 
@@ -111,4 +112,17 @@ export function loadSafetyPolicyFile(file: string | undefined): SafetyPolicyFile
     throw new Error(`Failed to load safety policy file ${resolved}: ${String(error)}`);
   }
   return parseSafetyPolicyFile(parsed);
+}
+
+export async function saveSafetyPolicyFile(file: string, policy: SafetyPolicyFile): Promise<void> {
+  const resolved = path.resolve(file);
+  const validated = parseSafetyPolicyFile(policy);
+  const temporary = `${resolved}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(temporary, `${JSON.stringify(validated, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  try {
+    await rename(temporary, resolved);
+  } catch (error) {
+    await import("node:fs/promises").then(({ rm }) => rm(temporary, { force: true })).catch(() => undefined);
+    throw error;
+  }
 }

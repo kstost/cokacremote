@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -15,7 +15,9 @@ describe("task dashboard", () => {
   it("protects and serves task timeline APIs", async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), "cokacremote-dashboard-"));
     const token = "dashboard-test-secret-0123456789abcdef";
-    const config = loadConfig({ MCP_AUTH_TOKEN: token, MCP_HOST: "127.0.0.1", MCP_DEFAULT_CWD: dir }, dir);
+    const policyFile = path.join(dir, "safety-policy.json");
+    await writeFile(policyFile, JSON.stringify({ version: 1, defaults: { outsideWorkspace: "approval-required" } }));
+    const config = loadConfig({ MCP_AUTH_TOKEN: token, MCP_HOST: "127.0.0.1", MCP_DEFAULT_CWD: dir, MCP_SAFETY_MODE: "safe", MCP_SAFETY_POLICY_FILE: policyFile }, dir);
     config.port = 0;
     const services = createServices(config);
     const task = await services.taskJournal.startTask("Dashboard test", dir);
@@ -39,5 +41,19 @@ describe("task dashboard", () => {
     const approved = await fetch(`${base}/api/approvals/${pending.approvalId}/approve`, { method: "POST", headers });
     expect(approved.status).toBe(200);
     expect(services.safetyPolicy.list().find((item) => item.approvalId === pending.approvalId)?.approvedAt).toBeTruthy();
+    const policyResponse = await (await fetch(`${base}/api/policy`, { headers })).json() as { editable: boolean; policy: { version: number } };
+    expect(policyResponse.editable).toBe(true);
+    expect(policyResponse.policy.version).toBe(1);
+    const invalid = await fetch(`${base}/api/policy/validate`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ version: 2 }) });
+    expect(invalid.status).toBe(400);
+    const updatedPolicy = { version: 1, commands: [{ id: "deny-danger", pattern: "danger", decision: "deny" }] };
+    const saved = await fetch(`${base}/api/policy`, { method: "PUT", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(updatedPolicy) });
+    expect(saved.status).toBe(200);
+    expect(services.safetyPolicy.assessCommand("danger").decision).toBe("deny");
+    expect(JSON.parse(await readFile(policyFile, "utf8"))).toMatchObject(updatedPolicy);
+    await writeFile(policyFile, JSON.stringify({ version: 1, commands: [{ id: "allow-danger", pattern: "danger", decision: "allow" }] }));
+    const reloaded = await fetch(`${base}/api/policy/reload`, { method: "POST", headers });
+    expect(reloaded.status).toBe(200);
+    expect(services.safetyPolicy.assessCommand("danger").decision).toBe("allow");
   });
 });

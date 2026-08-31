@@ -147,7 +147,7 @@ The server provides 20 tools in total. `remove_path` permanently deletes targets
 
 Safe mode can be customized with `MCP_SAFETY_POLICY_FILE`. The file is JSON (`version: 1`) and supports ordered `commands` regex rules, ordered `paths` prefix rules, and default decisions. Rule decisions are `allow`, `approval-required`, or `deny`. User rules run before the built-in approval rules, so an environment can explicitly allow something such as `docker rm`; catastrophic built-in deny rules always run first and cannot be overridden. Path rules support `${workspace}` as an alias for `MCP_DEFAULT_CWD` and can optionally be limited to named MCP tools.
 
-Docker Compose mounts `${CONFIG_PATH:-./config}` read-only at `/config`. Copy `config/safety-policy.example.json` to `config/safety-policy.json`, set `MCP_SAFETY_MODE=safe` and `MCP_SAFETY_POLICY_FILE=/config/safety-policy.json`, then restart the service. `npm run doctor` validates the configured policy file and fails if the JSON, regex, version, or decision values are invalid.
+Docker Compose mounts `${CONFIG_PATH:-./config}` at `/config` so the authenticated dashboard can save policy changes. Copy `config/safety-policy.example.json` to `config/safety-policy.json`, set `MCP_SAFETY_MODE=safe` and `MCP_SAFETY_POLICY_FILE=/config/safety-policy.json`, then restart the service once to load the configured file path. After that, `/dashboard` can validate, save, and reload the policy without restarting the server. `npm run doctor` validates the configured policy file and fails if the JSON, regex, version, or decision values are invalid.
 
 Example policy:
 

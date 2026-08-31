@@ -27,7 +27,7 @@ services:
       - ${WORKSPACE_PATH:-./workspace}:/workspace
       - ${SSH_PATH:-./.ssh}:/home/node/.ssh
       - cokacremote-data:/data
-      - ${CONFIG_PATH:-./config}:/config:ro
+      - ${CONFIG_PATH:-./config}:/config
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:$${MCP_PORT:-3000}/health || exit 1"]
       interval: 30s
