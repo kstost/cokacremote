@@ -13,6 +13,7 @@ import { createServices, type McpServices } from "../src/mcp-server.js";
 
 interface JsonRpcResponse {
   result?: {
+    instructions?: string;
     tools?: Array<{ name: string }>;
     structuredContent?: Record<string, unknown>;
   };
@@ -184,6 +185,10 @@ describe("remote development MCP server", () => {
     expect(initializeResponse.headers.get("x-request-id")).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
+    const initialized = (await initializeResponse.json()) as JsonRpcResponse;
+    expect(initialized.result?.instructions).toContain("Complete the user's requested task end-to-end");
+    expect(initialized.result?.instructions).toContain("Prefer targeted, minimal edits");
+    expect(initialized.result?.instructions).toContain("Do not claim success unless verification supports it");
 
     const listResponse = await post(
       {
